@@ -1,0 +1,2421 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<!-- 손가락 확대는 막는다. 무대(#stage)는 fitStage() 가 창 크기에 딱 맞춰 놓는데,
+     여기에 손가락 확대가 겹치면 무대만 늘어나고 상단바(position:fixed)는 제자리에 남아
+     배치가 어긋난다 — 태블릿에서 화면을 크게 늘렸을 때 깨지던 것이 이 현상이다.
+     아이패드 사파리는 이 설정만으로는 막히지 않으므로 아래 스크립트에서 확대 동작도 함께 막는다.
+     (데스크톱 브라우저 확대는 그대로 둔다 — innerWidth 가 같이 바뀌어 fitStage 가 다시 맞춘다) -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>Anagram Game - Secret Code Challenge</title>
+<!-- 상단 네비게이션 아이콘 (FontAwesome 6) — 폴더 안에 받아두어 인터넷 없이도 나온다 -->
+<link rel="stylesheet" href="fontawesome/css/all.min.css">
+<!-- 폰트: 학교안심 PosterB(굵은 제목용) + BoardmarkerR(얇은 본문용).
+     파일 안에 폰트가 통째로 들어 있어(2.7MB) 인터넷 없이도 그대로 나온다.
+     다만 용량이 커서 이걸 기다리느라 첫 화면이 늦게 뜨므로,
+     media="print" 로 걸어 두었다가 다 받으면 화면에 적용한다(느린 와이파이 대비).
+     받는 동안에는 기본 글꼴로 먼저 보이고, 준비되면 학교안심체로 바뀐다. -->
+<link href="hakgyoansim-fonts.css" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="hakgyoansim-fonts.css" rel="stylesheet"></noscript>
+<style>
+/* ══════════ DESIGN KIT : Secret Code Challenge ══════════
+   탐정 사무소 컨셉 — 놋쇠 액자 / 어두운 호두나무 벽 / 오래된 서류(파치먼트) /
+   나무 글자 블록 / 놋쇠 다이얼과 자물쇠 */
+:root{
+  /* ── 디자인키트 지정 색상 8종 (anagram game 디자인키트.png) ── */
+  --kit-ink:#4A2F1B; --kit-brown:#5B4636; --kit-orange:#D4944A; --kit-cream:#F4E6C8;
+  --kit-rose:#D69AA0; --kit-green:#7FA27A; --kit-gold:#E2C16B; --kit-lavender:#B7A6D8;
+
+  /* 장미빛 액자 프레임 (키트의 테두리·별 장식) */
+  --rose-gold:#D69AA0; --rose-gold-dk:#B87C82; --rose-gold-lt:#F0CFD2;
+  /* 배경 : 키트의 크림 파치먼트. 카드보다 한 톤 짙게 잡아 카드가 떠 보이게 한다 */
+  --sky-1:#EFE1C6; --sky-2:#E4D2AF; --sky-3:#D8C398;
+  --cream:#FDF6E8; --cream-dk:#F4E6C8; --parchment:#F8EDD8;
+  --wood:#D4944A; --wood-dk:#A9722F; --block-face:#F4E6C8;
+  --brown:#4A2F1B; --brown-lt:#5B4636;
+  /* 강조 : 키트 버튼색 (Game Start 초록 / How to Play 로즈) */
+  --pink:#D69AA0; --mint:#7FA27A; --gold:#E2C16B;
+  --ok:#7FA27A; --ok-bg:#E7F0E3; --no:#D07E7E; --no-bg:#FBE7E7;
+  --shadow:0 6px 0 rgba(92,64,48,.18);
+  --font-display:'Hakgyoansim PosterB',sans-serif;
+  --font-body:'Hakgyoansim BoardmarkerR',sans-serif;
+}
+/* 이 게임은 밝은 화면 하나로만 만들어져 있다.
+   기기가 다크모드일 때 브라우저가 입력칸·스크롤막대를 어둡게 뒤집어
+   글자가 안 보이는 일이 없도록, 밝은 화면임을 못박아 둔다 */
+:root{color-scheme:light;}
+/* 휴대폰이 글자를 제멋대로 키우지 않게 한다 (무대를 통째로 확대·축소하는 방식이라
+   글자만 커지면 배치가 깨진다) */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+/* 화면의 글자는 읽을 거리가 아니라 놀잇감이라, 끌었을 때 파랗게 잡히지 않게 한다.
+   ('P.E.' 처럼 타일이 아닌 마침표가 텍스트로 선택돼 파란 블록으로 보이던 문제) */
+/* 상단바는 공통 부품(topnav.css / topnav.js)이 그린다. 무대는 fitStage()에서 띠 아래에 맞춘다 */
+
+/* 세로로 든 휴대폰에서는 무대가 너무 작아져 글자·타일을 누르기 어렵다.
+   가로로 돌리면 훨씬 편하다고 알려 준다 (돌리면 저절로 사라진다) */
+#rotate-hint{position:fixed;inset:0;z-index:100000;display:none;flex-direction:column;
+  align-items:center;justify-content:center;gap:18px;padding:28px;text-align:center;
+  background:var(--parchment,#F4E6C8);color:var(--brown,#4A2F1B);}
+#rotate-hint.show{display:flex;}
+#rotate-hint .rh-box-wrap{width:154px;height:154px;display:flex;align-items:center;justify-content:center;}
+#rotate-hint .rh-box{width:132px;height:78px;border:6px solid var(--rose-gold,#C98488);border-radius:14px;
+  background:var(--cream,#FAF1DF);box-shadow:inset 0 0 0 3px rgba(255,255,255,.6),0 6px 0 rgba(92,64,48,.28);
+  animation:rotateHintAG 2.6s ease-in-out infinite;}
+@keyframes rotateHintAG{
+  0%,15%{transform:rotate(0deg);}
+  45%,60%{transform:rotate(-90deg);}
+  90%,100%{transform:rotate(0deg);}
+}
+#rotate-hint .rh-title{font-family:var(--font-display);font-size:27px;color:#A65A52;}
+#rotate-hint .rh-sub{font-family:var(--font-body);font-size:19px;line-height:1.5;}
+#rotate-hint button{font-family:var(--font-display);font-size:19px;padding:12px 26px;border-radius:16px;
+  color:#fff;background:linear-gradient(180deg,#8FB088,#7FA27A);border:3px solid #5E7F59;
+  box-shadow:0 5px 0 rgba(92,64,48,.28);}
+
+#stage{user-select:none;-webkit-user-select:none;}
+/* 단, 철자를 치는 칸은 선택·복사가 되어야 한다 */
+#stage input{user-select:text;-webkit-user-select:text;}
+/* 무대 바깥(레터박스) 여백 — 키트의 진한 갈색. 밝은 무대가 액자처럼 떠 보인다 */
+/* touch-action:manipulation — 두 번 톡톡 쳐서 확대되는 동작을 끈다. 이걸 꺼 두지 않으면
+   빨리 두 번 누를 때 두 번째가 확대로 먹혀 버튼이 안 눌린다.
+   손가락 두 개로 넓히는 확대는 아래 스크립트('손가락 확대 막기')가 따로 막는다 */
+html,body{width:100%;height:100%;overflow:hidden;touch-action:manipulation;background:#5B4636;font-family:var(--font-body);color:var(--brown);
+  /* 두 폰트 모두 굵기가 하나뿐 → 브라우저가 억지로 굵게 만드는 것(가짜 볼드)을 막는다 */
+  font-synthesis:none;-webkit-font-synthesis:none;
+  /* 한글은 기본값이면 낱글자 단위로 아무 데서나 끊긴다("아이스크 / 림이").
+     keep-all 로 낱말째 넘기고, 한 줄에 도저히 안 들어갈 때만 마지막 수단으로 끊는다 */
+  word-break:keep-all;overflow-wrap:break-word;}
+button{font-family:var(--font-display);border:none;cursor:pointer;}
+/* 두 폰트 모두 단일 굵기 → 강조는 가짜 볼드 대신 포스터체로 바꿔 표현 */
+b,strong{font-family:var(--font-display);font-weight:normal;}
+
+/* ── 고정 비율 스테이지 (1280x720, 화면에 맞춰 통짜 확대/축소) ── */
+#stage{position:fixed;left:50%;top:50%;width:1280px;height:720px;
+  transform:translate(-50%,-50%) scale(1);transform-origin:center;
+  background:linear-gradient(180deg,var(--sky-1),var(--sky-2) 55%,var(--sky-3));
+  border-radius:18px;overflow:hidden;}
+/* 장미빛 액자 프레임 (키트의 이중 테두리) */
+#stage::after{content:'';position:absolute;inset:0;border-radius:18px;pointer-events:none;z-index:50;
+  border:10px solid var(--rose-gold);
+  box-shadow:inset 0 0 0 3px var(--rose-gold-lt), inset 0 0 0 6px var(--rose-gold-dk);}
+
+.screen{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;}
+.screen.active{display:flex;}
+
+/* 탐정 사무소 : 왼쪽 위 책장 조명이 방을 비추는 느낌.
+   빛은 밝고 맑게(누런 기 없이), 반대쪽 그늘은 아주 옅게만 깔아
+   어둡거나 무섭지 않고 포근해 보이도록 한다 */
+#stage::before{content:'';position:absolute;inset:0;pointer-events:none;z-index:0;
+  background:
+    /* 조명이 쏟아지는 밝은 부분 (왼쪽 위) */
+    radial-gradient(ellipse 85% 90% at 6% -8%, rgba(255,255,252,.55), rgba(255,252,244,.22) 42%, transparent 72%),
+    /* 빛이 닿지 않는 반대쪽(오른쪽 아래)에 아주 옅은 그늘 */
+    radial-gradient(ellipse 70% 75% at 106% 110%, rgba(90,70,52,.13), transparent 62%);}
+
+/* ── 공통 내비게이션 ── */
+/* .nav-btn 은 엔딩·복습 화면의 버튼(다시 플레이하기 / 처음으로 등)에서 계속 쓰인다 */
+.nav-btn{background:var(--cream);color:var(--brown);border-radius:14px;padding:9px 16px;font-size:18px;
+  box-shadow:var(--shadow);border:2px solid var(--wood-dk);transition:transform .1s;}
+.nav-btn:active{transform:translateY(3px);box-shadow:0 3px 0 rgba(92,64,48,.18);}
+.nav-btn:disabled{opacity:.45;cursor:default;}
+.nav-btn:disabled:active{transform:none;box-shadow:var(--shadow);}
+
+/* ── 전체 게임 공통 상단 네비게이션 (원형 버튼) ──
+   #stage 바깥에 두고 position:fixed 로 화면 모서리에 고정한다.
+   (#stage 안에 넣으면 transform 때문에 fixed 가 무대 기준으로 바뀌어 같이 확대·축소된다) */
+.glass-pill{
+  background:rgba(255,255,255,0.9);
+  backdrop-filter:blur(8px);
+  box-shadow:0 4px 14px rgba(100,120,180,0.15);
+}
+/* 키보드로 이동할 때 어디가 선택됐는지 보이도록. all:unset 등으로 기본 아웃라인이
+   지워진 버튼에도 적용되도록 !important로 강제한다 */
+button:focus-visible,
+[tabindex]:focus-visible{
+  outline:3px solid #2563eb !important;
+  outline-offset:2px !important;
+}
+
+/* ── 타이틀 화면 ── */
+/* 타이틀 배경 : 2.7MB PNG 를 354KB JPEG 으로 다시 저장한 것 (10.png -> title.jpg) */
+#screen-title{background:url('title.jpg') center/cover no-repeat;}
+.title-bottom{position:absolute;left:0;right:0;bottom:34px;display:flex;justify-content:center;gap:34px;z-index:30;}
+/* 지금 단원 이름 : 타이틀 명판(높이 92px) 바로 위에 뜨는 흰 알약 */
+[data-unit-label]{position:absolute;left:50%;bottom:144px;transform:translateX(-50%);z-index:30;
+  background:#fff;border:3px solid var(--wood-dk);border-radius:999px;padding:8px 30px;
+  font-family:var(--font-display);font-size:26px;color:var(--brown);white-space:nowrap;box-shadow:var(--shadow);}
+[data-unit-label][hidden]{display:none;}
+/* 타이틀 버튼 : 글자가 없는 빈 명판 그림 위에 우리 폰트로 글씨를 얹는다.
+   그림 비율 260x80 을 그대로 키운 값(299x92)을 써서 명판이 찌그러지지 않게 한다 */
+.title-btn{position:relative;width:299px;height:92px;border:none;padding:0;
+  background:none no-repeat center/100% 100%;
+  display:flex;align-items:center;justify-content:center;
+  filter:drop-shadow(0 6px 8px rgba(74,47,27,.45));transition:transform .12s,filter .12s;}
+.title-btn.plate-green{background-image:url('characters/ui/plate_green.png');}
+.title-btn.plate-pink{background-image:url('characters/ui/plate_pink.png');}
+/* 명판 안쪽 오목한 부분에 글씨가 놓이도록 살짝 위로 올린다 */
+.title-btn span{font-family:var(--font-display);font-size:31px;letter-spacing:.5px;
+  color:#FBF1DE;text-shadow:0 2px 3px rgba(48,30,18,.6);transform:translateY(-2px);}
+.title-btn:hover{transform:translateY(-3px);filter:drop-shadow(0 9px 10px rgba(74,47,27,.5));}
+.title-btn:active{transform:translateY(2px);filter:drop-shadow(0 3px 5px rgba(74,47,27,.45));}
+
+
+/* ── 키트 캐릭터 (곰·토끼 탐정) ──
+   화면 구석에 서 있는 장식용. 클릭을 가로채지 않도록 pointer-events 를 끈다 */
+.deco-char{position:absolute;z-index:6;pointer-events:none;user-select:none;
+  filter:drop-shadow(0 6px 10px rgba(74,47,27,.35));}
+.deco-char.bl{left:28px;bottom:24px;}
+.deco-char.br{right:28px;bottom:24px;}
+/* 주제 선택 화면 아래 양옆의 소품.
+   가운데 카드(폭 900~1300px)와 겹치지 않도록 화면 끝에 붙이고 크기를 작게 잡는다.
+   높이만 정하고 폭은 자동이라 소품마다 원래 비율이 유지된다.
+   무대 끝에 딱 붙지 않도록 대분류 칸 사이 간격(.major-grid 의 gap 16px)만큼만
+   안쪽·위쪽으로 띄웠다 (24 -> 40, 18 -> 34).
+   한 자리에 소품을 두 개 이상 놓을 수도 있어 묶음(div)으로 두고 가로로 세운다 */
+.deco-props{position:absolute;bottom:34px;z-index:6;pointer-events:none;user-select:none;
+  display:flex;align-items:flex-end;gap:10px;}
+.deco-props img{width:auto;opacity:.92;
+  filter:drop-shadow(0 6px 10px rgba(74,47,27,.35));}
+
+/* 소품 여덟 가지를 두 화면에 하나씩만 나눠 놓는다 (같은 그림을 두 번 쓰지 않는다).
+   한 자리에 큰 것 하나 + 작은 것 하나를 두고, 작은 쪽에 음수 마진을 줘서
+   책상 위에 포개 놓은 것처럼 보이게 한다.
+   큰 소품은 늘 바깥쪽(화면 끝)에, 작은 소품은 안쪽에 두어
+   가운데 격자·패널을 가리는 일이 없도록 했다 — 작은 쪽은 키가 낮아
+   격자(아래끝 y573)·패널(아래끝 y579)보다 아래에만 놓인다. */
+/* 대분류 네 가지는 10% 씩 키운 값 (120→132 / 58→64 / 60→66 / 110→121).
+   안쪽 두 개(블록·편지)는 격자 아래끝 y573 보다 아래에만 놓여야 해서 높이 113px 이 한계다
+   (격자를 올리기 전에는 아래끝이 y618 이라 68px 이 한계였다) */
+.p-safe  {height:132px;}                        /* 대분류 오른쪽 : 금고 */
+.p-blocks{height:64px;  margin-left:-34px;}     /* 대분류 왼쪽 안쪽 : 알파벳 블록 */
+.p-env   {height:66px;  margin-right:-30px;}    /* 대분류 오른쪽 안쪽 : 밀랍 편지 */
+.p-cork  {height:121px;}                        /* 대분류 왼쪽 : 코르크 단서판 */
+.p-lamp  {height:237px;}                        /* 소분류 왼쪽 : 책상 램프 */
+/* 소분류 안쪽 두 자리. 어떤 소품이 오든 패널 아래끝(y579)보다 위로 올라가면 안 되고
+   바닥에서 34px 띄우므로 높이 107px 이 한계다. 여유를 두고 104px 로 잡았다.
+   자리 기준으로 이름을 붙여, 두 소품을 맞바꿔도 여백 값이 따라가지 않는다 */
+/* 왼쪽 안쪽 자리는 램프 갓 아래 빈 곳으로 당겨 넣는다.
+   램프 그림은 이 높이대에서 화면 x151 까지만 차 있다(실측) — x171 부터라 20px 떨어진다.
+   바닥선(y686)보다 10px 더 내려 놓아 그만큼 키를 키웠다.
+   패널 아래끝 y579 에 닿지 않으려면 이 자리에서 117px 이 한계라 114px 로 잡았다 */
+.p-in-l  {height:114px; margin-left:-78px; margin-bottom:-10px;}
+/* 오른쪽 안쪽 자리는 바깥쪽 소품(책)보다 앞에 놓이도록 한 겹 올린다 */
+.p-in-r  {height:104px; margin-right:-34px; position:relative; z-index:1;}
+.p-books {height:156px;}                        /*            책 + 화분 */
+
+/* 대분류 격자는 900px(x190~1090), 소분류 패널은 760px(x260~1020) 이라
+   양옆 여백이 다르다. 화면마다 바깥 여백을 따로 잡는다 */
+/* 대분류는 무대 끝에 딱 붙어 보여서, 바닥에서 띄운 만큼(34px) 좌우도 안쪽으로 넣었다 */
+#screen-major .deco-props.bl{left:34px;}
+#screen-major .deco-props.br{right:34px;}
+#screen-sub   .deco-props.bl{left:32px;}
+#screen-sub   .deco-props.br{right:20px;}
+/* 엔딩 화면 : 결과 상자 양옆에 선 전신 캐릭터 */
+.end-char{position:absolute;bottom:54px;z-index:9;pointer-events:none;
+  filter:drop-shadow(0 8px 14px rgba(0,0,0,.4));}
+.end-char.left{left:46px;height:236px;}
+.end-char.right{right:46px;height:226px;}
+/* 정답·오답 팝업의 표정 캐릭터 (이모지 대신) */
+.popup .p-icon img{display:block;margin:0 auto;height:112px;width:auto;}
+/* How to Play 모달 제목 옆 캐릭터 */
+.howto-box h2 img{height:52px;width:auto;vertical-align:-14px;margin-right:8px;}
+
+/* ── 키트의 놋쇠 원형 아이콘 (이모지·글꼴아이콘 대체) ──
+   모두 표시 크기의 2배로 만들어 둬서 무대가 확대돼도 흐릿해지지 않는다 */
+.kit-ico{height:28px;width:auto;vertical-align:-7px;}
+#btn-hint .kit-ico{height:32px;vertical-align:-9px;margin-right:6px;}
+.badge .kit-ico{height:26px;vertical-align:-6px;margin-right:4px;}
+/* 확장 에셋 : 게임 버튼 안의 돋보기·열쇠·화살표 */
+.g-btn .kit-ico{height:30px;vertical-align:-8px;margin-right:6px;}
+/* 화살표는 가로로 길어서 높이를 낮게 잡아야 글자와 균형이 맞는다 */
+.kit-ico.arrow{height:20px;vertical-align:-3px;}
+.p-btn .kit-ico.arrow{margin:0 0 0 8px;}
+.nav-btn .kit-ico.arrow{margin:0 6px 0 0;}
+.flip{transform:scaleX(-1);}
+/* 뜻 힌트 줄 앞의 놋쇠 전구 배지 */
+#meaning-line .kit-ico{height:34px;vertical-align:-9px;margin-right:8px;}
+.cp-lock img{height:26px;width:auto;display:block;}
+.word-audio-btn img{height:22px;width:auto;}
+/* 엔딩 화면 자물쇠 */
+#end-lock img{height:95px;width:auto;display:block;margin:0 auto;}
+
+/* ── 선택 화면 공통 ── */
+/* 위쪽 내비 버튼(처음으로/뒤로/앞으로/How to Play)과 겹치지 않도록 제목·버튼을 아래로 내린다 */
+.select-wrap{width:100%;height:100%;padding:118px 60px 40px;display:flex;flex-direction:column;align-items:center;
+  background:linear-gradient(180deg,var(--sky-1),var(--sky-2));}
+.select-title{font-family:var(--font-display);font-size:34px;color:var(--brown);background:var(--parchment);padding:10px 38px;border-radius:20px;
+  border:3px solid var(--wood-dk);box-shadow:var(--shadow);margin-bottom:26px;}
+
+/* 학년 칸 : 최대 4개를 한 줄(4열)에 */
+.major-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;width:900px;flex:1;align-content:center;}
+/* 격자는 남는 칸의 가운데에 놓이는데, 아래 소품이 격자에 거의 붙어(간격 2px) 있고
+   제목과는 92px 떨어져 있어 위아래가 어긋나 보였다.
+   아래 여백을 늘려 가운데 기준을 올린다 — 제목 아래끝(y182)부터 격자까지,
+   격자부터 아래 소품 위끝(y620)까지가 각각 약 47px 로 같아진다 (격자 y229~573).
+   이 값을 키우면 격자가 올라가고 줄이면 내려간다 (2px 늘릴 때마다 1px 이동) */
+#screen-major .select-wrap{padding-bottom:130px;}
+.major-btn{background:var(--cream);border:3px solid var(--wood-dk);border-radius:18px;padding:14px 10px;
+  font-size:22px;color:var(--brown);box-shadow:var(--shadow);transition:transform .12s;line-height:1.25;
+  min-height:104px;}   /* 기존 87px 의 약 1.2배 */
+/* 이모지를 뺀 만큼 주제 이름을 키운다.
+   가장 긴 이름(숫자·색깔·시간 = 8글자)이 한 줄에 들어가는 크기가 28px 이다 */
+.major-btn{font-size:28px;}
+/* 학년은 한 줄뿐이라 칸을 키우고 글자도 크게 */
+#major-grid .major-btn{min-height:190px;font-size:40px;}
+.major-btn .en{display:block;font-size:17px;color:var(--brown-lt);font-family:var(--font-body);margin-top:6px;}
+.major-btn:hover{transform:translateY(-3px);background:#fff8ea;}
+.major-btn:active{transform:translateY(2px);}
+
+/* 소분류 */
+.sub-panel{background:var(--parchment);border:3px solid var(--wood-dk);border-radius:24px;
+  padding:30px 40px;width:760px;display:flex;flex-direction:column;align-items:center;gap:18px;box-shadow:var(--shadow);}
+/* 주제 이름은 윗줄, 단어 개수는 아랫줄 가운데 — 이름 길이와 상관없이 같은 모양이 되도록 */
+.btn-all,.sub-btn{border-radius:16px;font-size:22px;padding:12px 20px;border:3px solid var(--wood-dk);
+  background:var(--cream);color:var(--brown);box-shadow:0 4px 0 rgba(92,64,48,.15);transition:transform .1s;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;line-height:1.2;}
+.btn-all .sb-count,.sub-btn .sb-count{font-family:var(--font-body);font-size:16px;color:var(--brown-lt);}
+.btn-all.on .sb-count,.sub-btn.on .sb-count{color:rgba(255,255,255,.85);}
+/* 소분류 이름 : 우리말이 윗줄(22px, 위 .sub-btn 글자 크기 그대로), 영어는 그 아래 작게.
+   대분류 칸의 .major-btn .en 과 같은 모양이라 두 화면이 이어져 보인다 */
+.sub-btn .sb-en{font-family:var(--font-body);font-size:16px;color:var(--brown-lt);}
+.sub-btn.on .sb-en{color:rgba(255,255,255,.85);}
+.btn-all{width:100%;background:linear-gradient(180deg,var(--gold),#EBC26A);}
+/* 단원 칸 : 4열 x 최대 2줄. 긴 단원 이름도 패널 아래끝(y579) 안에 들어가는 높이 */
+.sub-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;width:100%;}
+.sub-btn{min-height:130px;padding:10px 8px;}
+.sub-btn .sb-en{line-height:1.3;}
+.btn-all.on,.sub-btn.on{background:linear-gradient(180deg,#8FB088,#7FA27A);color:#fff;border-color:#5E7F59;}
+.btn-all:active,.sub-btn:active{transform:translateY(2px);}
+#sel-count{font-family:var(--font-body);font-size:22px;color:var(--brown-lt);}
+#btn-game-start{font-size:26px;padding:14px 60px;border-radius:18px;color:#FDF6E8;
+  background:linear-gradient(180deg,#8FB088,var(--mint));border:3px solid #5E7F59;box-shadow:0 6px 0 rgba(74,47,27,.28);}
+#btn-game-start:disabled{filter:grayscale(.7);opacity:.55;cursor:not-allowed;}
+
+/* 커스텀 툴팁 */
+#tooltip{position:absolute;z-index:60;display:none;max-width:340px;background:#4A2F1B;color:#FFF6E6;
+  border:2px solid var(--rose-gold-lt);border-radius:14px;padding:12px 16px;font-size:16px;line-height:1.5;
+  /* 단어 중간에서 잘려 줄바꿈되지 않도록. 줄은 쉼표 뒤에서만 넘어간다 */
+  word-break:keep-all;overflow-wrap:normal;
+  box-shadow:0 8px 18px rgba(0,0,0,.35);pointer-events:none;}
+#tooltip .tt-title{color:var(--gold);font-size:17px;margin-bottom:4px;display:block;}
+
+/* ── 게임 화면 ──
+   그림을 얹지 않고 '재질'만으로 탐정 사무소 분위기를 낸다.
+   ① 사건 서류의 옅은 괘선  ② 책상 나무결  ③ 왼쪽 위에서 드는 램프빛
+   모두 아주 옅어서 글자판을 읽는 데 방해가 되지 않는다 */
+#screen-game{padding:76px 34px 20px;
+  background:
+    repeating-linear-gradient(0deg, rgba(74,47,27,.030) 0 1px, transparent 1px 27px),
+    repeating-linear-gradient(90deg, rgba(74,47,27,.018) 0 1px, transparent 1px 61px),
+    radial-gradient(ellipse 62% 70% at 10% 2%, rgba(255,253,246,.42), transparent 66%);}
+.game-top{width:100%;display:flex;align-items:center;gap:18px;margin-top:6px;z-index:5;}
+/* 배지·진행바는 놋쇠 명판처럼 : 위쪽에 얇은 빛줄, 아래쪽에 옅은 그늘을 안쪽으로 넣어
+   납작한 색면이 아니라 두께가 있는 판으로 보이게 한다 */
+.badge{background:linear-gradient(180deg,#FCF3E2,var(--parchment));
+  border:3px solid var(--wood-dk);border-radius:16px;padding:8px 18px;
+  font-family:var(--font-display);font-size:20px;white-space:nowrap;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.85),inset 0 -3px 6px rgba(74,47,27,.10),var(--shadow);}
+/* 한 자리에서 두 자리로 늘어나는 숫자(단서 9 -> 10, 점수 7 -> 14)는 자리를 미리 잡아 둔다.
+   .game-top 은 한 줄이고 가운데 .code-progress 가 flex:1 로 남는 폭을 쓰므로,
+   배지 안 숫자가 한 글자 늘면 그만큼 가운데 칸이 좁아지며 한 번 흔들린다 */
+.badge .num2,.badge .num3{display:inline-block;text-align:right;font-variant-numeric:tabular-nums;}
+.badge .num2{min-width:2ch;}   /* 단서 번호 : 최대 10 */
+.badge .num3{min-width:3ch;}   /* 점수 : 한 문제 최대 12점이라 다 맞히면 세 자리까지 간다 */
+/* Code Progress : 비밀번호를 한 자리씩 알아내는 느낌의 칸 (10.png 모티프) */
+.code-progress{flex:1;display:flex;align-items:center;gap:10px;
+  background:linear-gradient(180deg,#FCF3E2,var(--parchment));
+  border:3px solid var(--wood-dk);border-radius:16px;padding:8px 16px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.85),inset 0 -3px 6px rgba(74,47,27,.10),var(--shadow);}
+.code-progress .cp-label{font-family:var(--font-body);font-size:15px;color:var(--brown-lt);white-space:nowrap;}
+/* 적어둔 그대로 'Code Progress' 로 보이도록 대문자 변환은 쓰지 않는다 */
+.code-progress .cp-label{letter-spacing:1px;}
+/* 칸이 'Code Progress' 글자·자물쇠 그림에 닿지 않도록 좌우에 여백을 남겨 둔다 */
+.cp-slots{flex:1;display:flex;justify-content:center;gap:7px;padding:0 8px;}
+/* 금고 다이얼 창 : 어두운 안쪽에 놋쇠 테두리.
+   ── 가로폭 ──
+   flex 로 남는 공간을 열 칸이 똑같이 나눠 가지되, max-width 로 46px 에서 멈춘다.
+   (띠 안쪽에 열 칸 몫으로 한 칸당 53px 쯤 남지만 '조금씩만' 늘리는 게 목적이라 46px 로 끊었다)
+   폭이 예상보다 좁은 경우에도 min-width 34px 아래로는 줄지 않으므로,
+   양옆 글자와 자물쇠를 밀어내는 일은 생기지 않는다 */
+.cp-cell{flex:1 1 34px;min-width:34px;max-width:46px;height:36px;border-radius:7px;
+  border:2px solid var(--rose-gold-dk);background:#4A2F1B;color:#9C8871;
+  font-family:var(--font-display);font-size:22px;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:inset 0 2px 4px rgba(0,0,0,.5);transition:color .3s,background .3s,box-shadow .3s;}
+/* 알아낸 자리 : 키트 진행바처럼 파스텔 칸이 하나씩 채워진다 */
+.cp-cell.on{color:var(--kit-ink);border-color:var(--wood-dk);
+  box-shadow:inset 0 -2px 0 rgba(74,47,27,.14),0 0 8px rgba(226,193,107,.45);}
+.cp-cell.on.p0{background:#F3C9CE;}
+.cp-cell.on.p1{background:#F6DDAE;}
+.cp-cell.on.p2{background:#F2E9AE;}
+.cp-cell.on.p3{background:#CFE3C4;}
+.cp-cell.on.p4{background:#C3D8EC;}
+.cp-cell.on.p5{background:#D9CDEC;}
+.cp-lock{font-size:22px;color:var(--wood-dk);}
+.game-main{flex:1;width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;}
+#meaning-line{min-height:44px;font-size:26px;color:#4A2F1B;background:rgba(250,241,223,.9);border-radius:14px;
+  padding:6px 26px;border:2px dashed var(--wood-dk);display:none;}
+#meaning-line.show{display:block;}
+
+/* 빈칸 슬롯 & 글자 블록 (나무 블록)
+   ── 2026-09 : 끌어다 놓는 판 전체를 20% 키웠다.
+      칸 72→86.4 / 80→96, 글자 42→50, 긴 단어용 축소본 58→70 / 66→79 / 32→38.
+      가장 긴 'police officer'(13글자+공백)도 한 줄에 들어가도록
+      칸 사이 간격은 14→17 로만 올리고 최대 폭을 무대 여백 끝(1212px)까지 넓혔다 */
+.slots,.pool{display:flex;gap:17px;justify-content:center;flex-wrap:wrap;max-width:1212px;}
+/* 빈칸은 금고 판에 파인 자리처럼 : 안쪽 그림자로 살짝 들어가 보이게 한다 */
+.slot{width:86px;height:96px;border-radius:14px;border:3px dashed rgba(92,64,48,.5);
+  background:rgba(250,241,223,.35);position:relative;
+  box-shadow:inset 0 3px 6px rgba(74,47,27,.16),inset 0 -1px 0 rgba(255,255,255,.5);}
+/* 미리 채워진 글자 칸은 파인 느낌이 필요 없다 */
+.slot.fixed-char{box-shadow:none;}
+/* 마침표·하이픈·공백처럼 미리 채워진 글자.
+   빈칸과 같은 폭이면 'the U.S.' 가 뚝뚝 떨어져 보이므로 폭은 renderBoard 에서 좁히고,
+   좌우 여백도 음수 마진으로 당겨 글자에 붙인다. 색은 타일 글자와 같은 갈색 */
+.slot.fixed-char{border-style:solid;background:transparent;border-color:transparent;
+  display:flex;align-items:center;justify-content:center;font-family:var(--font-display);
+  font-size:48px;color:var(--brown);margin:0 -6px;}
+.slot.hint-glow{border-color:var(--gold);border-style:solid;box-shadow:0 0 0 5px rgba(245,213,138,.55),0 0 18px var(--gold);animation:glowPulse 1s infinite;}
+@keyframes glowPulse{0%,100%{box-shadow:0 0 0 5px rgba(245,213,138,.45)}50%{box-shadow:0 0 4px 8px rgba(245,213,138,.8)}}
+.pool{min-height:115px;align-items:center;}
+/* 글자 블록 : 키트의 나무 블록. 글자마다 색이 정해져 옮겨도 같은 색을 유지한다 */
+/* -webkit-touch-callout:none — 태블릿에서 글자를 잠깐 누르고 있으면 뜨던 '복사·공유' 말풍선을
+   막는다. 그 말풍선이 뜨는 순간 끌던 동작이 취소돼 글자가 제자리로 돌아가 버렸다 */
+.tile{width:86px;height:96px;border-radius:14px;cursor:grab;user-select:none;touch-action:none;
+  -webkit-touch-callout:none;
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-display);font-size:50px;color:var(--kit-ink);
+  background:linear-gradient(180deg,var(--block-face),#E6D2AC);
+  border:3px solid var(--wood-dk);
+  box-shadow:inset 0 0 0 2px rgba(255,255,255,.45),0 6px 0 var(--wood-dk),0 8px 6px rgba(74,47,27,.22);
+  position:relative;}
+/* t0~t5 : 위 Code Progress 칸(.cp-cell.on.p0~p5)과 같은 순서·같은 파스텔이다.
+   한 문제 안에서는 글자가 모두 같은 색이고, 문제가 넘어가면 다음 색으로 바뀐다.
+   그래서 지금 푸는 글자 색을 보면 상단 코드칸의 몇 번째 자리인지 바로 알 수 있다.
+   ▼ 색을 바꿀 때는 .cp-cell.on.p* 의 background 도 같이 바꿔야 짝이 맞는다 */
+.tile.t0{background:linear-gradient(180deg,#FBE2E5,#F3C9CE);border-color:#C58F95;box-shadow:inset 0 0 0 2px rgba(255,255,255,.45),0 6px 0 #C58F95,0 8px 6px rgba(74,47,27,.22);}
+.tile.t1{background:linear-gradient(180deg,#FCEED2,#F6DDAE);border-color:#C9A868;box-shadow:inset 0 0 0 2px rgba(255,255,255,.45),0 6px 0 #C9A868,0 8px 6px rgba(74,47,27,.22);}
+.tile.t2{background:linear-gradient(180deg,#F9F4D2,#F2E9AE);border-color:#C2B76B;box-shadow:inset 0 0 0 2px rgba(255,255,255,.45),0 6px 0 #C2B76B,0 8px 6px rgba(74,47,27,.22);}
+.tile.t3{background:linear-gradient(180deg,#E4F0DC,#CFE3C4);border-color:#90AF83;box-shadow:inset 0 0 0 2px rgba(255,255,255,.45),0 6px 0 #90AF83,0 8px 6px rgba(74,47,27,.22);}
+.tile.t4{background:linear-gradient(180deg,#DCEAF6,#C3D8EC);border-color:#8AA9C4;box-shadow:inset 0 0 0 2px rgba(255,255,255,.45),0 6px 0 #8AA9C4,0 8px 6px rgba(74,47,27,.22);}
+.tile.t5{background:linear-gradient(180deg,#EBE3F6,#D9CDEC);border-color:#A192BE;box-shadow:inset 0 0 0 2px rgba(255,255,255,.45),0 6px 0 #A192BE,0 8px 6px rgba(74,47,27,.22);}
+.tile.in-slot{box-shadow:inset 0 0 0 2px rgba(255,255,255,.45),0 3px 0 rgba(74,47,27,.35);}
+.tile.hint-glow{box-shadow:0 0 0 5px rgba(226,193,107,.75),0 6px 0 var(--wood-dk);animation:glowPulse 1s infinite;}
+/* 잘못 놓인 글자 표시. ❌ 이모지는 기기마다 모양이 달라
+   빨간 동그라미 위에 흰 X 를 직접 그린다 (두 방향의 띠를 겹쳐 X 를 만든다) */
+.tile.wrong-mark::after{content:'';position:absolute;top:-11px;right:-11px;
+  width:26px;height:26px;border-radius:50%;border:2px solid #fff;
+  background:
+    linear-gradient(45deg,transparent 43%,#fff 43%,#fff 57%,transparent 57%),
+    linear-gradient(-45deg,transparent 43%,#fff 43%,#fff 57%,transparent 57%),
+    var(--no);
+  box-shadow:0 2px 5px rgba(74,47,27,.4);}
+.tile.dragging-src{opacity:.35;}
+/* 키보드로 집어 든 글자 — 어디를 들고 있는지 한눈에 보이게 한다 */
+.tile.key-held{outline:4px solid var(--gold);outline-offset:3px;
+  box-shadow:0 0 0 7px rgba(226,193,107,.45),0 6px 0 var(--wood-dk);}
+#drag-ghost{position:fixed;left:0;top:0;z-index:9999;pointer-events:none;display:none;
+  will-change:transform;transform:translate3d(-9999px,-9999px,0);}
+.pool-hole{width:86px;height:96px;border-radius:14px;background:rgba(0,0,0,.08);border:2px dashed rgba(92,64,48,.25);}
+
+.game-btns{display:flex;gap:16px;}
+.g-btn{font-size:22px;padding:12px 28px;border-radius:16px;color:#fff;box-shadow:0 6px 0 rgba(92,64,48,.28);
+  border:3px solid rgba(255,255,255,.4);transition:transform .1s;}
+.g-btn:active{transform:translateY(3px);box-shadow:0 2px 0 rgba(92,64,48,.28);}
+#btn-hint{background:linear-gradient(180deg,var(--gold),#E5B95A);color:#6B4E17;}
+#btn-reset{background:linear-gradient(180deg,#A8C5EC,#7FA4D8);color:#2F4A6E;}
+/* 글자색이 바탕 분홍과 너무 가까워 흐려 보이던 것을 한 톤 진하게 (예전 #A65A52).
+   Hint(#6B4E17) · 초기화(#2F4A6E) 버튼과 비슷한 진하기로 맞췄다 */
+#btn-submit{background:linear-gradient(180deg,var(--pink),#C98488);color:#78302A;}
+#btn-submit:disabled{filter:grayscale(.8);opacity:.5;cursor:not-allowed;}
+#hint-toast{min-height:26px;font-family:var(--font-body);font-size:19px;color:#6B4E17;}
+
+/* 하단 진행 결과 (정답 초록 / 오답 빨강)
+   수사 기록을 붙여 놓는 서류철처럼 : 왼쪽 라벨을 세로선으로 구분한다 */
+.result-strip{width:100%;background:linear-gradient(180deg,#FCF3E2,var(--parchment));
+  border:3px solid var(--wood-dk);border-radius:16px;
+  padding:8px 16px;display:flex;gap:8px;flex-wrap:wrap;min-height:54px;align-items:center;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.85),inset 0 -3px 6px rgba(74,47,27,.10),var(--shadow);}
+.result-strip .rs-label{font-size:17px;color:var(--brown-lt);margin-right:10px;padding-right:12px;
+  border-right:2px solid rgba(169,114,47,.35);letter-spacing:.5px;}
+/* 아이콘 없이 색깔로만 맞고 틀림을 구분한다. 아이콘(20px + 여백 5px)이 빠진 만큼
+   글자를 17 → 19px 로 키웠다.
+   ── 19px 로 정한 근거 ──
+   띠 안쪽 폭은 1212 - 여백 32 - 테두리 6 = 1174px.
+   열 칸은 어차피 두 줄로 나뉘고, '진행 결과' 이름표가 붙는 첫 줄이 가장 빡빡하다.
+   이름표 자리 약 109px + 칸 사이 간격 8×5 = 40px 을 빼면 다섯 칸에 1025px,
+   한 칸 205px 에서 여백 28 과 테두리 4 를 빼면 글자에 173px.
+   이 글꼴은 영문 한 글자가 약 0.62em 이므로 가장 긴 단어(police officer = 14글자) 기준
+   173 / (14 × 0.62) = 19.9px 까지 가능하다. 여유를 두고 19px 로 잡았다. */
+.chip{padding:4px 14px;border-radius:14px;font-size:19px;line-height:1.2;
+  font-family:var(--font-display);border:2px solid;white-space:nowrap;}
+/* 색만으로 구분하므로 바탕을 원래보다 또렷한 톤으로 채운다 */
+.chip.ok{background:#DCE9D5;color:#2E6B41;border-color:var(--ok);}
+.chip.no{background:#F7D9D9;color:#9E3B3B;border-color:var(--no);}
+
+/* 흔들림 */
+@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-10px)}40%,80%{transform:translateX(10px)}}
+.shake{animation:shake .45s;}
+
+/* ── 팝업 공통 ──
+   덮개는 보랏빛 대신 게임과 같은 갈색 톤으로. 완전히 어둡게 덮지 않고
+   위쪽 조명 방향은 살려 두어 팝업이 떠도 화면 분위기가 이어지도록 한다 */
+.overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:45;
+  background:
+    radial-gradient(ellipse 85% 90% at 6% -8%, rgba(244,230,200,.24), transparent 66%),
+    rgba(74,47,27,.52);}
+.overlay.show{display:flex;}
+/* 키트의 파치먼트 패널 : 장미빛 테두리 + 안쪽 크림 라인 */
+.popup{position:relative;   /* 오른쪽 위 ✕ 버튼의 기준 */
+  background:var(--parchment);border:4px solid var(--rose-gold);border-radius:26px;padding:36px 54px;
+  text-align:center;max-width:640px;animation:popIn .25s;
+  box-shadow:inset 0 0 0 3px var(--rose-gold-lt),0 14px 40px rgba(74,47,27,.45);}
+@keyframes popIn{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
+.popup .p-icon{font-size:56px;}
+.popup h2{font-family:var(--font-display);font-size:34px;margin:8px 0;}
+.p-word-line{display:flex;align-items:center;justify-content:center;gap:14px;}
+.popup .p-word{font-family:var(--font-display);font-size:44px;letter-spacing:3px;}
+.popup .p-mean{font-family:var(--font-body);font-size:24px;color:var(--brown-lt);margin:6px 0 4px;}
+.popup .p-point{font-family:var(--font-body);font-size:24px;margin:8px 0;}
+.popup.correct{border-color:var(--ok);box-shadow:inset 0 0 0 3px #CFE0C6,0 14px 40px rgba(74,47,27,.45);}
+.popup.correct h2,.popup.correct .p-word{color:#4A6B45;}
+.popup.wrong{border-color:var(--no);box-shadow:inset 0 0 0 3px #F0CFCF,0 14px 40px rgba(74,47,27,.45);}
+.popup.wrong h2{color:#A65A52;} .popup.wrong .p-word{color:#4A6B45;}
+/* 정답은 아니지만 실제로 있는 다른 영단어를 만들었을 때.
+   틀렸다고 나무라는 자리가 아니므로 오답의 붉은색 대신 Hint 와 같은 놋쇠빛으로 둔다 */
+.popup.alt-word{border-color:var(--gold);box-shadow:inset 0 0 0 3px #F6E3B4,0 14px 40px rgba(74,47,27,.45);}
+.popup.alt-word h2{color:#8A6A1E;}
+.popup.alt-word .p-word{color:#6B4E17;}
+.popup .p-ask{font-family:var(--font-body);font-size:24px;line-height:1.5;margin:10px 0 2px;}
+.popup .p-ask b{color:#A65A52;}
+.p-btn{margin-top:14px;font-size:22px;padding:12px 40px;border-radius:16px;color:#fff;
+  background:linear-gradient(180deg,#8FB088,#7FA27A);border:3px solid #5E7F59;box-shadow:0 5px 0 rgba(92,64,48,.28);}
+.p-btn.retry{background:linear-gradient(180deg,var(--gold),#E5B95A);border-color:#C09246;color:#6B4E17;}
+.p-btn:active{transform:translateY(3px);}
+
+/* How to Play */
+/* 설명이 길어 세로로 넘치던 것을 두 단 배치로 바꿔 한 화면에 담는다 (스크롤 없음) */
+.howto-box{max-width:1120px;text-align:left;max-height:672px;padding:26px 40px;}
+/* 설명 글이 빽빽해 답답해 보여서 줄과 항목 사이를 넉넉히 띄웠다.
+   (max-height 672px 안에 스크롤 없이 들어가는 선까지만) */
+.howto-cols{columns:2;column-gap:38px;margin-top:20px;}
+.howto-cols h3{break-after:avoid;margin-top:0;}
+.howto-cols ul{break-inside:avoid;margin-bottom:16px;}
+.howto-box h2{text-align:center;color:#A65A52;}
+.howto-box h3{font-family:var(--font-display);font-size:22px;color:#4A2F1B;margin:16px 0 8px;}
+.howto-box p,.howto-box li{font-family:var(--font-body);font-size:19px;line-height:1.7;color:var(--brown);}
+.howto-box li{margin-bottom:7px;}
+.howto-box ul{padding-left:22px;}
+
+/* 학습 목표 */
+/* 목표 문장이 한 줄로 들어가므로 위아래 여백을 줄여 칸을 낮게 잡았다 */
+.learning-goal{background:linear-gradient(180deg,#FFF8EA,var(--cream));border:3px dashed var(--rose-gold-dk);
+  border-radius:18px;padding:9px 22px 11px;margin:10px 0 4px;box-shadow:inset 0 0 0 2px rgba(255,255,255,.6);}
+.learning-goal .lg-label{font-family:var(--font-display);font-size:22px;color:#A65A52;text-align:center;margin-bottom:3px;}
+/* 팝업 안쪽 폭 1040px 에 24px 글자로 약 900px — nowrap 으로 두어도 한 줄에 들어간다 */
+.learning-goal .lg-text{font-family:var(--font-body);font-size:24px;line-height:1.35;color:var(--brown);text-align:center;white-space:nowrap;}
+.learning-goal b{color:#A65A52;}
+
+/* How to Play 하단 버튼 */
+.howto-box .p-btn{display:block;margin:18px auto 0;}
+.howto-box .p-btns{margin-top:18px;}
+.howto-box .p-btns .p-btn{margin:0;}
+/* Game Start 는 이 팝업의 주 버튼이라 한 톤 진하게 — 글자도 또렷하게 */
+.p-btn.go{background:linear-gradient(180deg,#C98488,#B06C74);border-color:#93555E;color:#FFF4F0;
+  font-size:24px;padding:13px 48px;}
+
+/* 팝업 오른쪽 위 닫기(✕).
+   게임 중에 ❓ 로 연 How to Play 처럼 아래 버튼이 없는 팝업에서만 보인다 */
+.popup-x{position:absolute;top:14px;right:16px;width:44px;height:44px;border-radius:50%;
+  border:3px solid var(--wood-dk);background:var(--cream);color:var(--brown);
+  font-family:var(--font-display);font-size:24px;line-height:1;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.8),0 4px 0 rgba(92,64,48,.25);
+  transition:transform .15s,background .15s;z-index:2;}
+.popup-x:hover{background:#fff8ea;transform:translateY(-2px);}
+.popup-x:active{transform:translateY(2px);}
+
+/* ── 엔딩 화면 ── */
+#screen-end{background:linear-gradient(180deg,#7A6455,#9A8574 60%,var(--sky-1));justify-content:center;}
+.end-box{position:relative;z-index:10;background:rgba(250,241,223,.96);border:4px solid var(--rose-gold);
+  border-radius:30px;padding:34px 70px;text-align:center;box-shadow:0 16px 50px rgba(0,0,0,.4);animation:popIn .4s;}
+#end-lock{font-size:78px;color:var(--rose-gold);display:inline-block;animation:lockShake 1s .3s;}
+#end-lock.open{color:var(--gold);}
+@keyframes lockShake{0%,100%{transform:rotate(0)}20%{transform:rotate(-14deg)}40%{transform:rotate(12deg)}60%{transform:rotate(-8deg)}80%{transform:rotate(6deg)}}
+#end-lock.open{animation:lockOpen .7s forwards;}
+@keyframes lockOpen{0%{transform:scale(1)}45%{transform:scale(1.35) rotate(8deg)}100%{transform:scale(1.15)}}
+/* 멘트가 길어도 줄이 넘어가지 않도록. 상자가 글에 맞춰 넓어진다 */
+.end-title{font-family:var(--font-display);font-size:42px;color:#A65A52;margin:6px 0;white-space:nowrap;}
+.end-sub{font-family:var(--font-body);font-size:20px;color:var(--brown-lt);letter-spacing:2px;}
+.end-stats{display:flex;gap:18px;justify-content:center;margin:20px 0;}
+.stat{background:var(--cream);border:3px solid var(--wood-dk);border-radius:18px;padding:12px 26px;box-shadow:var(--shadow);}
+.stat .s-num{font-family:var(--font-display);font-size:36px;color:#4A2F1B;}
+.stat .s-lab{font-family:var(--font-body);font-size:17px;color:var(--brown-lt);}
+.end-btns{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;}
+/* 축포 판. 맨 뒤 층으로 두어 결과 상자와 캐릭터를 절대 가리지 않는다
+   (자리 잡기는 fireworks() 가 상자를 피해서 한다) */
+#end-fx{position:absolute;inset:0;z-index:0;pointer-events:none;}
+.confetti{position:absolute;top:-20px;border-radius:3px;z-index:5;animation:fall linear forwards;}
+@keyframes fall{to{transform:translateY(780px) rotate(720deg);opacity:.9;}}
+/* 폭죽 그림. 폭이 인라인 스타일로 하나씩 정해지므로 여기서는 높이만 자동으로 둔다 */
+.fw{position:absolute;height:auto;z-index:6;pointer-events:none;animation:fw 1.6s ease-out infinite;}
+@keyframes fw{0%{transform:scale(.3);opacity:0}30%{opacity:1}100%{transform:scale(1.6);opacity:0}}
+
+/* ── 발음 듣기 버튼 (정답 팝업 · 복습 카드 공통) ── */
+.word-audio-btn{flex-shrink:0;width:42px;height:42px;border-radius:50%;
+  border:3px solid var(--wood-dk);background:var(--cream);color:var(--brown-lt);
+  font-size:17px;display:flex;align-items:center;justify-content:center;
+  transition:transform .15s,background .15s;}
+.word-audio-btn:hover{background:#fff8ea;transform:scale(1.08);}
+.word-audio-btn:active{transform:scale(.95);}
+.word-audio-btn.playing{background:linear-gradient(180deg,var(--gold),#E5B95A);
+  border-color:var(--rose-gold-dk);color:#6B4E17;}
+
+/* 복습 화면 : 사건 파일 카드 */
+#screen-review{background:linear-gradient(180deg,var(--sky-1),var(--sky-2));}
+/* 이 화면은 위쪽에 버튼이 없으므로 여백을 줄여 카드 3줄이 다 들어오게 한다 */
+#screen-review .select-wrap{padding-top:92px;}
+/* 한 줄에 4칸. 4개까지(=한 줄)는 가운데, 5개부터는 왼쪽부터 채워 줄이 맞도록 (JS에서 전환) */
+/* 10개를 다 틀려도 스크롤 없이 한 화면에 들어가도록 4칸 x 3줄로 맞춘 값 */
+.review-grid{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;
+  width:100%;max-width:1120px;margin-top:8px;padding:6px 0;}
+.review-card{width:264px;flex:0 0 auto;background:var(--parchment);border:3px solid var(--no);
+  border-radius:18px;padding:12px 14px;text-align:center;box-shadow:var(--shadow);}
+/* 가장 긴 단어가 'police officer'(14자). 칸 안쪽 226px 에 한 줄로 들어가고,
+   혹시 모를 줄바꿈을 nowrap 으로 막는다 */
+.review-card .rv-en{font-family:var(--font-display);font-size:26px;color:#4A2F1B;letter-spacing:0;
+  white-space:nowrap;}
+.rv-bottom{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:6px;}
+.review-card .rv-ko{font-family:var(--font-body);font-size:21px;color:var(--brown-lt);white-space:nowrap;}
+/* 카드 전체가 타이핑 연습 팝업을 여는 버튼이다 (button 요소라 글꼴을 되돌려 준다) */
+.review-card{cursor:pointer;font-family:var(--font-body);transition:transform .15s,filter .15s;}
+.review-card:hover{transform:translateY(-3px);filter:brightness(1.03);}
+.review-card:active{transform:translateY(2px);}
+/* 카드마다 안내를 붙이면 칸이 넘치므로, 화면 위에 한 번만 적어 둔다 */
+.review-guide{font-family:var(--font-body);font-size:19px;color:var(--brown-lt);margin:-18px 0 8px;text-align:center;}
+/* 전체 문제 복습일 때는 오답 표시(빨강) 대신 중립적인 나무색 테두리 */
+#review-grid.mode-all .review-card{border-color:var(--wood-dk);}
+
+/* ── 게임 종료 확인 팝업 ──
+   되돌릴 수 없는 행동이라 오답과 같은 색(--no)으로 테두리를 잡아 한 번 더 눈에 띄게 한다 */
+.popup.leave-box{border-color:var(--no);box-shadow:inset 0 0 0 3px #F0CFCF,0 14px 40px rgba(74,47,27,.45);}
+.popup.leave-box h2{color:#A65A52;}
+.popup.leave-box .p-ask{margin:4px 0 2px;}
+
+/* ── 복습 화면의 타이핑 연습 팝업 ── */
+.popup.practice{border-color:var(--wood-dk);box-shadow:inset 0 0 0 3px var(--cream-dk),0 14px 40px rgba(74,47,27,.45);}
+.popup.practice h2{color:#7A5A2E;}
+.popup.practice .p-word{color:#4A2F1B;}
+#pr-input{display:block;width:78%;margin:14px auto 2px;padding:11px 16px;font-size:22px;
+  font-family:var(--font-body);text-align:center;border-radius:14px;border:3px solid var(--wood-dk);
+  background:var(--cream);color:var(--brown);}
+#pr-input:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 4px rgba(226,193,107,.45);}
+#pr-msg{min-height:34px;}
+#pr-msg.ok{color:#4A6B45;}
+#pr-msg.no{color:#A65A52;}
+.p-btns{display:flex;gap:14px;justify-content:center;}
+.p-btn.quit{background:linear-gradient(180deg,var(--gold),#E5B95A);border-color:#C09246;color:#6B4E17;}
+/* 틀렸을 때 입력칸을 좌우로 흔들어 알려 준다 */
+@keyframes inputShake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+#pr-input.shake{animation:inputShake .4s;}
+
+/* '가로로 돌려 주세요' 안내가 떠 있는 동안에는 상단바를 감춘다.
+   상단바의 z-index(2147483000)가 안내창(100000)보다 훨씬 높아 그냥 두면 안내창 위로 떠오른다.
+   팝업이 열렸을 때 쓰는 topnav.css 의 body.modal-open 규칙과 같은 방식이다 */
+body.rotate-open #top-nav-bar{visibility:hidden;}
+
+/* ── 무대 바깥 여백에 깔리는 탐정 소품 (돋보기·자물쇠·열쇠·물음표·메모·발자국) ──
+   #stage 보다 먼저 그려지도록 DOM 에서 앞에 두고 z-index 를 0 으로 둔다.
+   화면 전체에 흩뿌리면 무대에 가려지는 것은 자연히 안 보이고 여백 부분만 남는다 */
+#bg-deco{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;}
+#bg-deco i{position:absolute;color:#F7EEDC;
+  filter:drop-shadow(0 1px 1px rgba(0,0,0,.25));}
+</style>
+<link rel="stylesheet" href="topnav.css">
+</head>
+<body>
+<!-- 무대 바깥 여백 장식 (JS 에서 아이콘을 흩뿌린다) -->
+<div id="bg-deco" aria-hidden="true"></div>
+
+<!-- 처음 보이는 화면이 타이틀이므로 on-title 로 시작한다 (별 장식 숨김) -->
+<div id="stage" class="on-title">
+
+
+  <!-- 타이틀 -->
+  <div id="screen-title" class="screen active">
+    <!-- 지금 단원 이름 (주소에 단원이 있을 때만 보인다) -->
+    <div data-unit-label hidden></div>
+    <div class="title-bottom">
+      <button id="btn-howto" class="title-btn plate-pink"><span>How to Play</span></button>
+      <button id="btn-start" class="title-btn plate-green"><span>Game Start</span></button>
+    </div>
+  </div>
+
+  <!-- 학년 선택 (주소에 단원이 없을 때만 쓴다) -->
+  <div id="screen-major" class="screen">
+    <div class="select-wrap">
+      <div class="select-title">학년을 선택하세요.</div>
+      <div id="major-grid" class="major-grid"></div>
+    </div>
+    <!-- 화면 아래 양옆에 놓는 탐정 사무소 소품 -->
+    <div class="deco-props bl">
+      <img class="p-cork" src="characters/ui/prop_cork.png" alt="" loading="lazy">
+      <img class="p-blocks" src="characters/ui/prop_blocks.png" alt="" loading="lazy">
+    </div>
+    <div class="deco-props br">
+      <img class="p-env" src="characters/ui/prop_envelope.png" alt="" loading="lazy">
+      <img class="p-safe" src="characters/ui/prop_safe.png" alt="" loading="lazy">
+    </div>
+  </div>
+
+  <!-- 단원 선택 : 단원을 누르면 그 단원 주소로 게임을 새로 연다 -->
+  <div id="screen-sub" class="screen">
+    <div class="select-wrap">
+      <div class="select-title" id="unit-title">단원을 선택하세요.</div>
+      <div class="sub-panel">
+        <div id="sub-row" class="sub-row"></div>
+      </div>
+    </div>
+    <!-- 왼쪽은 두 개 : 책상 램프가 펼쳐진 암호 노트를 비추는 모양새 -->
+    <div class="deco-props bl">
+      <img class="p-lamp" src="characters/ui/prop_lamp.png" alt="" loading="lazy">
+      <img class="p-in-l" src="characters/ui/prop_notebook.png" alt="" loading="lazy">
+    </div>
+    <div class="deco-props br">
+      <img class="p-in-r" src="characters/ui/prop_ink.png" alt="" loading="lazy">
+      <img class="p-books" src="characters/ui/prop_books.png" alt="" loading="lazy">
+    </div>
+  </div>
+
+  <!-- 게임 -->
+  <div id="screen-game" class="screen">
+    <div class="game-top">
+      <div class="badge" id="q-badge"><img class="kit-ico" src="characters/ui/dial.png" alt=""> 단서 1 / 10</div>
+      <div class="code-progress">
+        <span class="cp-label">Code Progress</span>
+        <!-- 금고 다이얼처럼 알아낸 자리는 *, 남은 자리는 _ 로 채운다 -->
+        <div id="cp-slots" class="cp-slots"></div>
+        <span class="cp-lock" id="cp-lock"><img src="characters/ui/lock_small.png" alt=""></span>
+      </div>
+      <!-- 숫자만 span 으로 갈아 끼워서 앞의 훈장 그림이 지워지지 않게 한다 -->
+      <div class="badge" id="score-badge"><img class="kit-ico" src="characters/ui/medal.png" alt="">점수: <span id="score-val" class="num3">0</span></div>
+    </div>
+    <div class="game-main">
+      <div id="meaning-line"></div>
+      <div id="slots" class="slots"></div>
+      <div id="pool" class="pool"></div>
+      <div id="hint-toast"></div>
+      <div class="game-btns">
+        <button id="btn-hint" class="g-btn"><img class="kit-ico" src="characters/ui/magnifier.png" alt="">Hint (<span id="hint-left">5</span>)</button>
+        <button id="btn-reset" class="g-btn"><img class="kit-ico arrow flip" src="characters/ui/arrow.png" alt="">초기화</button>
+        <button id="btn-submit" class="g-btn" disabled><img class="kit-ico" src="characters/ui/key.png" alt="">제출하기</button>
+      </div>
+    </div>
+    <div class="result-strip"><span class="rs-label">진행 결과</span><span id="result-chips" style="display:contents"></span></div>
+  </div>
+
+  <!-- 엔딩 -->
+  <div id="screen-end" class="screen">
+    <div id="end-fx"></div>
+    <img class="end-char left" src="characters/ui/bear_solved.png" alt="" loading="lazy">
+    <img class="end-char right" src="characters/ui/rabbit_key.png" alt="" loading="lazy">
+    <div class="end-box">
+      <!-- showEnd 가 잠긴/열린 자물쇠 그림으로 바꿔 끼운다 -->
+      <div id="end-lock"><img src="characters/ui/lock_big.png" alt="" loading="lazy"></div>
+      <div class="end-sub" id="end-sub">SECRET CODE UNLOCKED!</div>
+      <div class="end-title" id="end-title-txt">비밀 코드를 모두 풀었어요!</div>
+      <div class="end-stats">
+        <div class="stat"><div class="s-num" id="end-score">0</div><div class="s-lab">최종 점수</div></div>
+        <div class="stat"><div class="s-num" id="end-correct">0/10</div><div class="s-lab">정답 수</div></div>
+        <div class="stat"><div class="s-num" id="end-rate">0%</div><div class="s-lab">정답률</div></div>
+      </div>
+      <div class="end-btns">
+        <button class="nav-btn" id="btn-replay">다시 플레이하기</button>
+        <!-- 복습 버튼 두 개를 나란히. 틀린 문제가 없으면 오른쪽 것만 빠진다 -->
+        <button class="nav-btn" id="btn-review-all">전체 문제 복습</button>
+        <button class="nav-btn" id="btn-review" style="display:none">틀린 문제 모아보기</button>
+        <button class="nav-btn" id="btn-end-home">처음으로</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 틀린 문제 복습 -->
+  <div id="screen-review" class="screen">
+    <div class="select-wrap">
+      <div class="select-title" id="review-title">틀린 문제 모아보기</div>
+      <div class="review-guide">단어를 클릭하면 따라 쓰기 연습을 할 수 있어요</div>
+      <div id="review-grid" class="review-grid"></div>
+      <button class="nav-btn" id="btn-review-back" style="margin-top:16px"><img class="kit-ico arrow flip" src="characters/ui/arrow.png" alt="">결과로 돌아가기</button>
+    </div>
+  </div>
+
+  <!-- How to Play 모달 -->
+  <div id="howto-overlay" class="overlay">
+    <div class="popup howto-box">
+      <button type="button" class="popup-x" id="btn-howto-x" title="닫기" aria-label="닫기">✕</button>
+      <h2><img src="characters/ui/bear_thinking.png" alt="" loading="lazy">How to Play</h2>
+      <div class="learning-goal">
+        <div class="lg-label">오늘의 학습 목표</div>
+        <div class="lg-text">이번 단원의 영어 단어를 알고, 알파벳을 <b>알맞은 순서</b>로 배열하여 단어를 완성할 수 있다</div>
+      </div>
+      <!-- 세 묶음을 두 단으로 나눠 배치한다. 한 단으로 세우면 세로가 넘쳐 스크롤이 생긴다 -->
+      <div class="howto-cols">
+      <h3>How to Play</h3>
+      <ul>
+        <li>Game Start를 누르면 이번 단원의 단어로 게임이 시작됩니다.</li>
+        <li>흩어진 글자 블록을 <b>드래그</b>해서 빈칸에 놓아 단어를 완성해요.</li>
+        <li>빈칸에 놓은 글자는 <b>다른 빈칸으로 드래그</b>해 자리를 바꾸거나, 아래 글자판으로 드래그해 되돌릴 수 있어요.</li>
+        <li>빈칸을 모두 채운 뒤 <b>[제출하기]</b> 버튼을 눌러야 채점됩니다.</li>
+      </ul>
+      <h3>점수 규칙</h3>
+      <ul>
+        <li>4글자 이하 단어 <b>5점</b> / 5~6글자 <b>7점</b> / 7글자 이상 <b>10점</b></li>
+        <li>2문제 이상 <b>연속 정답</b>이면 문제마다 보너스 <b>+2점</b>!</li>
+        <li>다른 영단어를 만들면 감점 없이 다시 할 기회를 얻어요.</li>
+      </ul>
+      <h3>Hint (한 문제당 최대 5번)</h3>
+      <ul>
+        <li>Hint를 쓸 때마다 그 문제 점수에서 <b>1점씩 감점</b>돼요.</li>
+        <li>1번째: 한글 뜻 공개 → 2~4번째: 들어갈 글자와 자리 알려주기(잘못 놓인 글자엔 빨간 X 표시) → 5번째: 한 글자 자동으로 넣기</li>
+      </ul>
+      </div>
+      <!-- 타이틀에서 열면 아래 두 버튼, 게임 중에 ❓ 로 열면 오른쪽 위 ✕ 만 보인다 (openHowto 참고) -->
+      <div class="p-btns" id="howto-buttons">
+        <button class="p-btn quit" id="btn-howto-dismiss">닫기</button>
+        <button class="p-btn go" id="btn-howto-close">Game Start</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 정답/오답 팝업 -->
+  <div id="result-overlay" class="overlay">
+    <div id="result-popup" class="popup">
+      <button type="button" class="popup-x" onclick="closeModal()" title="닫기" aria-label="닫기">✕</button>
+      <!-- 채점 결과에 따라 JS 가 곰·토끼 그림으로 바꿔 끼운다 -->
+      <div class="p-icon" id="rp-icon"><img src="characters/ui/bear_solved.png" alt=""></div>
+      <h2 id="rp-title">정답이에요!</h2>
+      <div class="p-word-line">
+        <span class="p-word" id="rp-word"></span>
+        <button type="button" class="word-audio-btn" id="rp-audio-btn" title="발음 듣기">
+          <i class="fa-solid fa-volume-high"></i>
+        </button>
+      </div>
+      <div class="p-mean" id="rp-mean"></div>
+      <div class="p-point" id="rp-point"></div>
+      <button class="p-btn" id="btn-next">다음 문제<img class="kit-ico arrow" src="characters/ui/arrow.png" alt=""></button>
+    </div>
+  </div>
+
+  <!-- 정답은 아니지만 실제로 있는 다른 영단어를 만들었을 때 (채점하지 않고 그 문제를 다시 푼다) -->
+  <div id="alt-overlay" class="overlay">
+    <div class="popup alt-word">
+      <button type="button" class="popup-x" onclick="closeModal()" title="닫기" aria-label="닫기">✕</button>
+      <div class="p-icon"><img src="characters/ui/bear_writing.png" alt="" loading="lazy"></div>
+      <h2>다른 단어를 만들었네요!</h2>
+      <div class="p-word-line"><span class="p-word" id="alt-word"></span></div>
+      <!-- 대괄호 안쪽 여백은 줄바꿈되지 않는 공백이라 뜻이 괄호에서 떨어지지 않는다 -->
+      <div class="p-ask">그 단어도 있지만, 뜻이 [&nbsp;<b id="alt-mean"></b>&nbsp;]인 단어를 찾아볼까요?</div>
+      <button class="p-btn retry" id="btn-alt-retry">다시 해볼래요</button>
+    </div>
+  </div>
+
+  <!-- 게임 도중에 홈·뒤로를 눌렀을 때 확인받는 팝업 -->
+  <div id="leave-overlay" class="overlay">
+    <div class="popup leave-box">
+      <button type="button" class="popup-x" onclick="closeModal()" title="닫기" aria-label="닫기">✕</button>
+      <div class="p-icon"><img src="characters/ui/bear_writing.png" alt="" loading="lazy"></div>
+      <h2>게임을 종료할까요?</h2>
+      <div class="p-ask">지금 나가면 풀던 문제가 사라져요.</div>
+      <div class="p-btns">
+        <button class="p-btn" id="btn-leave-ok">나가기</button>
+        <button class="p-btn quit" id="btn-leave-cancel">계속하기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 복습 화면에서 단어 카드를 누르면 열리는 타이핑 연습 팝업 -->
+  <div id="practice-overlay" class="overlay">
+    <div class="popup practice">
+      <button type="button" class="popup-x" onclick="closeModal()" title="닫기" aria-label="닫기">✕</button>
+      <div class="p-icon"><img id="pr-icon" src="characters/ui/bear_writing.png" alt="" loading="lazy"></div>
+      <h2 id="pr-title">단어를 따라 써 볼까요?</h2>
+      <div class="p-word-line">
+        <span class="p-word" id="pr-word"></span>
+        <button type="button" class="word-audio-btn" id="pr-audio-btn" title="발음 듣기">
+          <i class="fa-solid fa-volume-high"></i>
+        </button>
+      </div>
+      <div class="p-mean" id="pr-mean"></div>
+      <input type="text" id="pr-input" placeholder="단어 입력"
+             autocapitalize="none" autocorrect="off" autocomplete="off" spellcheck="false">
+      <div class="p-point" id="pr-msg"></div>
+      <div class="p-btns">
+        <button class="p-btn" id="btn-pr-confirm">확인</button>
+        <!-- 철자가 끝내 생각나지 않아도 팝업에 갇히지 않도록 빠져나갈 길을 둔다 -->
+        <button class="p-btn quit" id="btn-pr-quit">그만하기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 커스텀 툴팁 -->
+  <div id="tooltip"></div>
+</div>
+
+<div id="drag-ghost"></div>
+
+<audio id="au-correct" src="correct.mp3" preload="auto"></audio>
+<audio id="au-wrong" src="wrong.mp3" preload="auto"></audio>
+<audio id="au-drag" src="drag.mp3" preload="auto"></audio>
+<!-- Hint 버튼을 눌렀을 때 나오는 알림. 62KB 라 미리 받아 둬야 누르는 즉시 소리가 난다.
+     ▼ 아래 세 파일 모두 이름을 폴더에 있는 그대로 적는다. 띄어쓰기와 한글은 브라우저가
+       알아서 주소로 바꿔 주고, %-표기로 적으면 점검 도구가 실제 파일과 대조하지 못한다 -->
+<audio id="au-hint" src="힌트 알림.mp3" preload="auto"></audio>
+<!-- 마지막 결과 화면에서 자물쇠가 열릴 때 (한 판에 한 번만 나는 소리) -->
+<audio id="au-success" src="성공.mp3" preload="auto"></audio>
+<!-- 배경음악은 3MB 라 미리 받으면 첫 화면이 늦게 뜬다.
+     preload="none" 으로 두고, 사용자가 처음 화면을 누른 뒤에 받아서 재생한다 -->
+<audio id="au-bgm" src="anagram background music.mp3" preload="none" loop></audio>
+<!-- 타이틀 · 주제 선택 화면에서 나오는 음악 (게임 화면부터는 위 배경음악으로 바뀐다).
+     3.2MB 라 마찬가지로 미리 받지 않는다 -->
+<audio id="au-intro-bgm" src="인트로 음악.mp3" preload="none" loop></audio>
+
+<!-- [상단 네비게이션 - 전체 게임 공통, 위치 고정] 왼쪽: 홈/뒤로/앞으로, 오른쪽: How to Play/효과음/배경음/전체화면.
+     이어진 하나의 바가 아니라 아이콘마다 따로 떠 있는 원형 버튼. title 속성으로 마우스오버 시 텍스트가 뜨도록 함 -->
+<!-- 세로로 든 휴대폰 안내. fitStage 가 화면 모양을 보고 켜고 끈다 -->
+<div id="rotate-hint" role="dialog" aria-live="polite">
+  <div class="rh-box-wrap"><div class="rh-box"></div></div>
+  <div class="rh-title">화면을 가로로 돌려 주세요</div>
+  <div class="rh-sub">가로로 놓으면 글자와 블록이 커져서<br>훨씬 편하게 할 수 있어요.</div>
+  <button type="button" id="rotate-hint-skip">이대로 할래요</button>
+</div>
+
+<div id="top-nav-bar" style="display:contents;">
+  <div style="position:fixed;top:18px;left:18px;z-index:9999;display:flex;gap:10px;">
+    <button type="button" id="nav-home-btn" onclick="navHome()" class="glass-pill" title="처음으로" style="width:52px;height:52px;border-radius:9999px;border:2px solid rgba(255,255,255,0.85);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;color:#3b3a66;">
+      <i class="fa-solid fa-house"></i>
+    </button>
+    <button type="button" id="nav-back-btn" onclick="navBack()" class="glass-pill" title="뒤로" style="width:52px;height:52px;border-radius:9999px;border:2px solid rgba(255,255,255,0.85);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px;color:#3b3a66;">
+      <i class="fa-solid fa-play" style="transform:scaleX(-1);"></i>
+    </button>
+    <button type="button" id="nav-forward-btn" onclick="navForward()" class="glass-pill" title="앞으로" style="width:52px;height:52px;border-radius:9999px;border:2px solid rgba(255,255,255,0.85);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px;color:#3b3a66;">
+      <i class="fa-solid fa-play"></i>
+    </button>
+  </div>
+
+  <div style="position:fixed;top:18px;right:18px;z-index:9999;display:flex;gap:10px;">
+    <button type="button" id="nav-htp-btn" onclick="openHowToPlay()" class="glass-pill" title="How to Play" style="width:52px;height:52px;border-radius:9999px;border:2px solid rgba(255,255,255,0.85);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;color:#3b3a66;">
+      <i class="fa-regular fa-circle-question"></i>
+    </button>
+    <button type="button" id="sfx-toggle-btn" onclick="toggleSfx()" class="glass-pill" title="효과음 On/Off" style="width:52px;height:52px;border-radius:9999px;border:2px solid rgba(255,255,255,0.85);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;color:#3b3a66;">
+      <i class="fa-solid fa-bell" id="sfx-toggle-icon"></i>
+    </button>
+    <button type="button" id="music-toggle-btn" onclick="toggleMusic()" class="glass-pill" title="배경음악 On/Off" style="width:52px;height:52px;border-radius:9999px;border:2px solid rgba(255,255,255,0.85);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;color:#3b3a66;">
+      <i class="fa-solid fa-music" id="music-toggle-icon"></i>
+    </button>
+    <button type="button" id="fullscreen-toggle-btn" onclick="toggleFullscreen()" class="glass-pill" title="전체화면" style="width:52px;height:52px;border-radius:9999px;border:2px solid rgba(255,255,255,0.85);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;color:#3b3a66;">
+      <i class="fa-solid fa-expand" id="fullscreen-toggle-icon"></i>
+    </button>
+  </div>
+</div>
+<script src="topnav.js" data-backdrop="title.jpg"></script>
+<script src="unit-data.js"></script>
+<script src="unit.js"></script>
+<script src="sfx.js"></script>
+
+<script>
+/* ══════════ 데이터 ══════════ */
+const WORD_DATA = {"숫자·색깔·시간\nNumber, Color&Time": {"Number": [["one", "숫자 1"], ["two", "숫자 2"], ["three", "숫자 3"], ["four", "숫자 4"], ["five", "숫자 5"], ["six", "숫자 6"], ["seven", "숫자 7"], ["eight", "숫자 8"], ["nine", "숫자 9"], ["ten", "숫자 10"], ["eleven", "숫자 11"], ["twelve", "숫자 12"], ["thirteen", "숫자 13"], ["fourteen", "숫자 14"], ["fifteen", "숫자 15"]], "Color": [["white", "흰색"], ["black", "검은색"], ["red", "빨간색"], ["orange", "주황색"], ["yellow", "노란색"], ["green", "초록색"], ["blue", "파란색"], ["purple", "보라색"], ["brown", "갈색"], ["gray", "회색"], ["pink", "분홍색"], ["color", "색깔"], ["rainbow", "무지개"]], "Time&Date": [["day", "하루, 일"], ["week", "주, 일주일"], ["month", "달, 월"], ["year", "해, 년"], ["morning", "아침(오전)"], ["afternoon", "오후"], ["evening", "저녁"], ["night", "밤"], ["time", "시간"], ["today", "오늘"], ["tomorrow", "내일"], ["yesterday", "어제"], ["weekend", "주말"], ["noon", "정오(낮 12시)"], ["season", "계절"]]}, "사람과 동물\nPeople&Animal": {"Body": [["eye", "눈"], ["nose", "코"], ["ear", "귀"], ["mouth", "입"], ["tooth", "치아"], ["face", "얼굴"], ["neck", "목"], ["hair", "머리카락"], ["head", "머리"], ["foot", "발"], ["finger", "손가락"], ["leg", "다리"], ["arm", "팔"], ["skin", "피부"], ["hand", "손"]], "Family&People": [["mom", "엄마"], ["dad", "아빠"], ["grandma", "할머니"], ["grandpa", "할아버지"], ["sister", "누나, 언니, 여동생"], ["brother", "형, 오빠, 남동생"], ["parents", "부모님"], ["uncle", "삼촌"], ["aunt", "이모, 고모"], ["cousin", "사촌"], ["baby", "아기"], ["child", "어린이"], ["boy", "남자아이"], ["girl", "여자아이"], ["man", "남자"]], "Animal": [["bear", "곰"], ["bird", "새"], ["cat", "고양이"], ["cow", "소"], ["dog", "개"], ["duck", "오리"], ["elephant", "코끼리"], ["fish", "물고기"], ["fox", "여우"], ["frog", "개구리"], ["giraffe", "기린"], ["horse", "말"], ["kangaroo", "캥거루"], ["lion", "사자"], ["monkey", "원숭이"]]}, "취미·과목·직업\nHobby, Subject&Job": {"Sports&Hobby": [["soccer", "축구"], ["baseball", "야구"], ["basketball", "농구"], ["badminton", "배드민턴"], ["tennis", "테니스"], ["table tennis", "탁구"], ["taekwondo", "태권도"], ["swimming", "수영"], ["skating", "스케이트"], ["skiing", "스키"], ["camping", "캠핑"], ["hiking", "등산"], ["drawing", "그림 그리기"], ["painting", "색칠하기"], ["cooking", "요리하기"]], "Subject&Class": [["English", "영어"], ["Korean", "국어"], ["Math", "수학"], ["Science", "과학"], ["History", "역사"], ["Art", "미술"], ["Music", "음악"], ["P.E.", "체육"], ["subject", "과목"], ["class", "수업"], ["lesson", "수업"], ["homework", "숙제"], ["test", "시험"], ["vacation", "방학"], ["grade", "학년"]], "Job": [["cook", "요리사"], ["doctor", "의사"], ["pilot", "조종사"], ["singer", "가수"], ["painter", "화가"], ["nurse", "간호사"], ["teacher", "선생님"], ["actor", "배우"], ["scientist", "과학자"], ["photographer", "사진가"], ["firefighter", "소방관"], ["police officer", "경찰관"], ["writer", "작가"], ["dentist", "치과의사"], ["zookeeper", "사육사"]]}, "음식과 음료\nFood&Drink": {"Fruit&Vegetable": [["apple", "사과"], ["banana", "바나나"], ["grape", "포도"], ["lemon", "레몬"], ["kiwi", "키위"], ["watermelon", "수박"], ["strawberry", "딸기"], ["peach", "복숭아"], ["pear", "배"], ["melon", "멜론"], ["potato", "감자"], ["tomato", "토마토"], ["carrot", "당근"], ["corn", "옥수수"], ["onion", "양파"]], "Meal&Snack": [["bread", "빵"], ["rice", "쌀, 밥"], ["cake", "케이크"], ["cheese", "치즈"], ["chicken", "닭고기"], ["chocolate", "초콜릿"], ["cookie", "쿠키"], ["hamburger", "햄버거"], ["pizza", "피자"], ["salad", "샐러드"], ["sandwich", "샌드위치"], ["spaghetti", "스파게티"], ["steak", "스테이크"], ["beef", "소고기"], ["egg", "달걀"]], "Drink&Taste": [["water", "물"], ["milk", "우유"], ["juice", "주스"], ["lemonade", "레모네이드"], ["tea", "차"], ["coffee", "커피"], ["sweet", "단, 달콤한"], ["salty", "짠, 짭짤한"], ["sour", "신, 시큼한"], ["spicy", "매운, 매콤한"], ["bitter", "쓴, 씁쓸한"], ["sugar", "설탕"], ["salt", "소금"], ["taste", "맛"], ["delicious", "맛있는"]]}, "국가와 자연\nCountry, Nature&Weather": {"Country": [["Korea", "대한민국"], ["the U.S.", "미국"], ["the U.K.", "영국"], ["Japan", "일본"], ["China", "중국"], ["Vietnam", "베트남"], ["Thailand", "태국"], ["India", "인도"], ["Italy", "이탈리아"], ["France", "프랑스"], ["Spain", "스페인"], ["Germany", "독일"], ["Sweden", "스웨덴"], ["Canada", "캐나다"], ["Mexico", "멕시코"]], "Nature": [["earth", "지구"], ["flower", "꽃"], ["tree", "나무"], ["leaves", "나뭇잎"], ["forest", "숲"], ["mountain", "산"], ["river", "강"], ["sea", "바다"], ["beach", "해변"], ["lake", "호수"], ["grass", "풀"], ["sky", "하늘"], ["star", "별"], ["sun", "태양"], ["moon", "달"]], "Weather": [["weather", "날씨"], ["cloud", "구름"], ["cloudy", "흐린"], ["sunny", "화창한"], ["raining", "비가 오는"], ["snowing", "눈이 오는"], ["windy", "바람이 부는"], ["foggy", "안개 낀"], ["lightning", "번개"], ["storm", "폭풍"], ["snowman", "눈사람"], ["ice", "얼음"], ["snow", "눈"], ["rain", "비"], ["wind", "바람"]]}, "장소·교통·방향\nPlace, Transportation&Direction": {"Place": [["bank", "은행"], ["bakery", "빵집"], ["bookstore", "서점"], ["market", "시장"], ["restaurant", "식당"], ["store", "가게"], ["hospital", "병원"], ["library", "도서관"], ["park", "공원"], ["school", "학교"], ["museum", "박물관"], ["airport", "공항"], ["church", "교회"], ["city hall", "시청"], ["police station", "경찰서"]], "Transportation": [["bike", "자전거"], ["bus", "버스"], ["car", "자동차"], ["taxi", "택시"], ["truck", "트럭"], ["train", "기차"], ["subway", "지하철"], ["airplane", "비행기"], ["flight", "비행, 항공편"], ["police car", "경찰차"], ["ship", "배"], ["boat", "배"], ["fire truck", "소방차"]], "Direction&Position": [["down", "아래"], ["left", "왼쪽"], ["right", "오른쪽"], ["straight", "곧게, 직진"], ["front", "앞"], ["back", "뒤"], ["behind", "뒤에"], ["under", "아래에"], ["over", "위에"], ["top", "맨 위"], ["bottom", "맨 아래"], ["middle", "가운데"], ["near", "가까이에"], ["next to", "옆에"], ["between", "사이에"]]}, "물건\nThings": {"School Supplies": [["textbook", "교과서"], ["book", "책"], ["notebook", "공책"], ["pencil", "연필"], ["pencil case", "필통"], ["eraser", "지우개"], ["ruler", "자"], ["scissors", "가위"], ["glue stick", "풀"], ["crayon", "크레용"], ["board", "칠판"], ["map", "지도"], ["paper", "종이"], ["computer", "컴퓨터"], ["bag", "가방"]], "Household": [["door", "문"], ["window", "창문"], ["bed", "침대"], ["chair", "의자"], ["desk", "책상"], ["table", "탁자"], ["sofa", "소파"], ["clock", "시계"], ["lamp", "전등, 램프"], ["fan", "선풍기"], ["mirror", "거울"], ["sink", "싱크대, 세면대"], ["stair", "계단"], ["towel", "수건"], ["toothbrush", "칫솔"]], "Clothing": [["cap", "모자, 야구모자"], ["hat", "모자"], ["coat", "코트"], ["jacket", "재킷"], ["shirt", "셔츠"], ["T-shirt", "티셔츠"], ["sweater", "스웨터"], ["dress", "드레스"], ["skirt", "치마"], ["pants", "바지"], ["hairpin", "머리핀"], ["socks", "양말"], ["shoes", "신발"], ["sunglasses", "선글라스"], ["gloves", "장갑"]]}, "동작\nAction": {"Daily Action": [["get up", "일어나다"], ["wash", "씻다"], ["brush", "닦다"], ["eat", "먹다"], ["drink", "마시다"], ["sleep", "자다"], ["open", "열다"], ["close", "닫다"], ["sit", "앉다"], ["stand", "서다"], ["read", "읽다"], ["write", "쓰다"], ["study", "공부하다"], ["clean", "청소하다"], ["make", "만들다"]], "Move&Play": [["go", "가다"], ["come", "오다"], ["run", "달리다"], ["walk", "걷다"], ["jump", "뛰다"], ["fly", "날다"], ["ride", "타다"], ["play", "놀다"], ["dance", "춤추다"], ["move", "움직이다"], ["enter", "들어가다"], ["catch", "잡다"], ["kick", "차다"], ["throw", "던지다"], ["climb", "오르다"]], "Talk&Feel": [["talk", "이야기하다"], ["say", "말하다"], ["tell", "알려주다"], ["ask", "묻다"], ["answer", "대답하다"], ["call", "부르다, 전화하다"], ["listen", "듣다"], ["sing", "노래 부르다"], ["meet", "만나다"], ["visit", "방문하다"], ["give", "주다"], ["thank", "고마워하다"], ["welcome", "환영하다"], ["like", "좋아하다"], ["want", "원하다"]]}, "특징과 감정\nCharacter&Feeling": {"Look": [["big", "큰"], ["small", "작은"], ["large", "커다란"], ["tall", "키가 큰"], ["short", "짧은"], ["long", "긴"], ["slim", "날씬한"], ["fat", "뚱뚱한"], ["thin", "얇은, 마른"], ["heavy", "무거운"], ["light", "가벼운"], ["strong", "힘이 센"], ["weak", "약한"], ["straight", "곧은"], ["curly", "곱슬곱슬한"]], "Character": [["good", "좋은"], ["bad", "나쁜"], ["kind", "친절한"], ["nice", "좋은, 멋진"], ["brave", "용감한"], ["funny", "재미있는"], ["smart", "똑똑한"], ["quiet", "조용한"], ["honest", "정직한"], ["lazy", "게으른"], ["cool", "멋진"], ["shy", "수줍음이 많은"]], "Feeling": [["happy", "행복한"], ["sad", "슬픈"], ["angry", "화난"], ["glad", "기쁜"], ["excited", "신난"], ["afraid", "두려운"], ["tired", "피곤한"], ["sleepy", "졸린"], ["hungry", "배고픈"], ["thirsty", "목마른"], ["sick", "아픈"], ["busy", "바쁜"], ["surprised", "놀란"]]}};
+/* ── 정답이 아니어도 '실제로 있는 영단어'인 경우 ──
+   빈칸을 다 채운 답은 언제나 정답 글자를 뒤섞은 것이므로,
+   여기 적어 둘 것은 각 정답 단어의 애너그램(같은 글자로 만들 수 있는 다른 단어)뿐이다.
+   인터넷 사전을 부르지 않고도 판정할 수 있도록 미리 구해서 넣어 두었다.
+   공개 영단어 목록(dwyl/english-words)에서 뽑은 뒤 자주 쓰는 2만 단어와 겹치는 것만 남기고,
+   고유명사(Gary·Iran)·약어·영어가 아닌 철자는 손으로 걸러냈다.
+   키는 정답 단어(소문자), 값은 그 글자로 만들 수 있는 다른 영단어들이다. */
+const ALT_WORDS = {
+  arm:"mar ram", art:"rat tar", aunt:"tuna", bad:"dab", bear:"bare", board:"broad",
+  bread:"beard", bus:"sub", busy:"buys", car:"arc", cat:"act", china:"chain",
+  clean:"lance", cloud:"could", coat:"taco", dad:"add", dog:"god", door:"odor",
+  ear:"are era", earth:"heart", eat:"ate tea", face:"cafe", fat:"aft", finger:"fringe",
+  forest:"foster", grape:"pager", green:"genre", horse:"shore", lake:"leak", lamp:"palm",
+  large:"regal", left:"felt", leg:"gel", lemon:"melon", listen:"silent", map:"amp",
+  melon:"lemon", moon:"mono", near:"earn", night:"thing", nose:"ones", open:"nope",
+  over:"rove", peach:"cheap", pear:"reap", quiet:"quite", read:"dare dear", ride:"dire",
+  run:"urn", sad:"ads", salt:"last", ship:"hips", sing:"sign", singer:"resign",
+  sink:"inks skin", sister:"resist", sit:"its", skin:"inks sink", small:"malls",
+  snow:"owns", sour:"ours", spain:"pains", star:"arts rats", steak:"skate stake takes",
+  study:"dusty", taste:"state", tea:"ate eat", ten:"net", thin:"hint", three:"ether there",
+  throw:"worth", time:"item", tired:"tried", top:"opt pot", two:"tow", weak:"wake"
+};
+/* 게임에 나오는 단어는 unit-data.js 의 지금 단원(UNIT.words)에서 가져온다.
+   위 WORD_DATA(테마 단어표)는 게임에 쓰지 않고, 단어 발음 파일이 어느 폴더에 있는지
+   찾아보는 용도로만 남겨 둔다 (아래 voiceSrc). */
+// 한 판에 나오는 문제 수 (라운드 구분 없이 한 번에 끝까지 푼다).
+// 단원 단어가 이보다 적으면 단어를 한 번 더 써서 채운다 (startGame).
+const MAX_QUESTIONS = 10;
+
+/* ══════════ 상태 ══════════ */
+let selectedGrade=null;   // 단원 목록 화면에서 고른 학년 (주소에 단원이 없을 때만 쓴다)
+let gameWords=[], round=0, score=0, streak=0, hintUsed=0;
+let answer="", slots=[], poolTiles=[], results=[], wrongList=[];
+let submitted=false;
+let histBack=[], histFwd=[];
+
+/* ══════════ 스테이지 비율 고정 ══════════ */
+const stage=document.getElementById('stage');
+let SCALE=1;
+/* 손가락으로 확대해도 window.innerWidth 는 그대로라 배율은 건드리지 않는다.
+   사용자가 키운 만큼 그대로 두는 것이 맞다. 여기서 다시 맞추는 것은
+   창 크기가 실제로 바뀌었을 때(기기를 돌리거나 자판이 오르내릴 때)뿐이다 */
+let lastFitW=window.innerWidth, fitPending=false;
+function fitStage(force){
+  const w=window.innerWidth, h=window.innerHeight;
+  /* 휴대폰은 자판이 올라오면 '높이만' 확 줄어드는데, 그때 다시 맞추면
+     무대가 쪼그라들었다가 자판을 내리면 되돌아온다. 그래서 글자를 치는 중에
+     높이만 바뀐 경우는 미뤄 두었다가 자판을 내릴 때 맞춘다.
+     가로가 바뀐 것은 기기를 돌린 것이므로 치는 중이라도 바로 맞춘다
+     (예전에는 무조건 건너뛰어서, 치다가 돌리면 무대가 어긋난 채 남았다) */
+  const el=document.activeElement;
+  const typing=el&&(el.tagName==='INPUT'||el.tagName==='TEXTAREA');
+  if(!force&&typing&&w===lastFitW){fitPending=true;return;}
+  lastFitW=w; fitPending=false;
+  /* 공통 상단바가 [상단바 + 게임 카드]를 창 가운데 여백을 두고 맞춘다 (무대 1280x720) */
+  SCALE=TopNav.fit(stage,1280,720);
+  updateRotateHint(w,h,SCALE);
+}
+/* 세로로 든 휴대폰은 무대가 너무 작아져(가로 390px 이면 배율 0.3) 글자와 블록을
+   손가락으로 누르기 어렵다. 태블릿 세로처럼 충분히 큰 경우는 그냥 둔다 */
+let rotateHintSkipped=false;
+function updateRotateHint(w,h,scale){
+  const el=document.getElementById('rotate-hint');
+  if(!el)return;
+  const show = h>w && scale<0.5 && !rotateHintSkipped;
+  el.classList.toggle('show', show);
+  // 안내창이 떠 있는 동안에는 상단바를 감춘다 (위 body.rotate-open 규칙)
+  document.body.classList.toggle('rotate-open', show);
+}
+window.addEventListener('resize',()=>fitStage());
+/* 가로·세로를 돌리면 창 크기가 바로 반영되지 않는 기기가 있어 한 박자 뒤에 한 번 더 맞춘다.
+   전체화면으로 들어가고 나올 때도 같은 이유로 늦게 잡히는 경우가 있다.
+   orientationchange 를 아예 보내지 않는 기기도 있어 screen.orientation 도 함께 듣는다 */
+const refitStage=()=>{fitStage(true);setTimeout(()=>fitStage(true),300);};
+window.addEventListener('orientationchange',refitStage);
+if(screen.orientation&&screen.orientation.addEventListener)screen.orientation.addEventListener('change',refitStage);
+// 자판이 오르내릴 때는 창 크기가 아니라 이것만 바뀌는 기기가 있다
+if(window.visualViewport)window.visualViewport.addEventListener('resize',()=>fitStage());
+/* 입력칸에서 빠져나오면(자판을 내리면) 미뤄 둔 배율을 그때 맞춘다.
+   미뤄 둔 것이 없으면 타이머를 아예 걸지 않는다 — 버튼을 눌러 화면을 넘길 때도
+   focusout 이 나는데, 그때마다 아무 일도 안 하는 타이머가 화면을 넘어가 실행됐다 */
+document.addEventListener('focusout',()=>{if(!fitPending)return;setTimeout(()=>{if(fitPending)fitStage(true);},60);});
+/* '이대로 할래요' 는 이번 판만 넘긴다. 한 번 가로로 돌렸다가 다시 세로로 들면
+   그때는 스스로 판단해서 다시 알려 준다 */
+document.getElementById('rotate-hint-skip').addEventListener('click',()=>{
+  rotateHintSkipped=true;
+  document.getElementById('rotate-hint').classList.remove('show');
+  document.body.classList.remove('rotate-open');   // 감춰 둔 상단바를 다시 보이게 한다
+});
+window.addEventListener('orientationchange',()=>{rotateHintSkipped=false;});
+
+/* ══════════ 손가락 확대 막기 ══════════
+   meta viewport 의 user-scalable=no 를 아이패드·아이폰 사파리는 무시하므로
+   확대 동작 자체를 막는다. 한 손가락 끌기(글자 블록 옮기기)는 건드리지 않는다.
+     · gesturestart/change/end  : 사파리의 두 손가락 확대
+     · touchmove(손가락 2개 이상) : 안드로이드 태블릿 공통
+   두 번 톡톡 쳐서 확대되는 것은 html,body 의 touch-action:manipulation 이 이미 막고 있다 */
+['gesturestart','gesturechange','gestureend'].forEach(t=>
+  document.addEventListener(t,e=>e.preventDefault(),{passive:false}));
+document.addEventListener('touchmove',e=>{if(e.touches.length>1)e.preventDefault();},{passive:false});
+
+fitStage();
+
+/* ══════════ 무대 바깥 여백 장식 ══════════
+   탐정 소품 아이콘을 화면 전체에 흩뿌린다. 가운데는 무대가 덮으므로
+   실제로 보이는 것은 위아래(또는 좌우) 여백에 걸친 아이콘들뿐이다.
+
+   순수 난수로 좌표를 뽑으면 한쪽에 뭉치고 다른 쪽은 비는 일이 생긴다.
+   그래서 화면을 거의 정사각형인 칸으로 나누고 칸마다 하나씩,
+   칸 안에서만 조금씩 흔들어 놓는다(= 밀도가 고르면서도 규칙적으로 보이지 않음). */
+(function decorateBackground(){
+  const deco=document.getElementById('bg-deco');
+  const icons=['fa-magnifying-glass','fa-lock','fa-key','fa-question',
+               'fa-note-sticky','fa-shoe-prints','fa-fingerprint','fa-user-secret'];
+  const COUNT=54;
+  let timer=null;
+
+  function layout(){
+    deco.innerHTML='';
+    const aspect=Math.max(window.innerWidth/Math.max(window.innerHeight,1),0.2);
+    const rows=Math.max(3,Math.round(Math.sqrt(COUNT/aspect)));
+    const cols=Math.max(3,Math.ceil(COUNT/rows));
+    for(let r=0;r<rows;r++){
+      for(let c=0;c<cols;c++){
+        const el=document.createElement('i');
+        el.className='fa-solid '+icons[Math.floor(Math.random()*icons.length)];
+        // 칸 안 20~80% 구간에만 놓아 이웃 칸 것과 겹치거나 붙지 않게 한다
+        el.style.left=((c+0.2+Math.random()*0.6)/cols*100).toFixed(2)+'%';
+        el.style.top =((r+0.2+Math.random()*0.6)/rows*100).toFixed(2)+'%';
+        el.style.fontSize=(16+Math.random()*15).toFixed(0)+'px';
+        el.style.opacity=(0.11+Math.random()*0.09).toFixed(2);
+        el.style.transform=`rotate(${(Math.random()*70-35).toFixed(0)}deg)`;
+        deco.appendChild(el);
+      }
+    }
+  }
+  layout();
+  // 창 크기가 바뀌면 칸 수를 다시 잡아야 밀도가 고르게 유지된다
+  window.addEventListener('resize',()=>{clearTimeout(timer);timer=setTimeout(layout,200);});
+})();
+
+/* ══════════ 화면 전환 + 뒤로/앞으로 ══════════ */
+/* ══════════ 예약된 작업(타이머) 관리 ══════════
+   결과 팝업 띄우기, 흔들림 되돌리기, 엔딩 자물쇠 열기는 몇백 ms~1.2초 뒤에 실행된다.
+   그 사이에 [처음으로]·[뒤로] 를 누르면 엉뚱한 화면에서 팝업이 뜨거나 소리가 난다.
+   그래서 예약할 때 laterInGame 으로 걸어 두고, 화면이 바뀌면 한 번에 취소한다. */
+let gameTimers=[];
+function laterInGame(fn,ms){
+  const id=setTimeout(()=>{
+    gameTimers=gameTimers.filter(t=>t!==id);   // 끝난 것은 목록에서 빼둔다
+    fn();
+  },ms);
+  gameTimers.push(id);
+  return id;
+}
+function clearGameTimers(){gameTimers.forEach(id=>clearTimeout(id));gameTimers=[];}
+
+const screens=['screen-title','screen-major','screen-sub','screen-game','screen-end','screen-review'];
+// 인트로 음악이 나오는 화면들 (주제를 다 고르고 게임 화면으로 넘어가면 배경음악으로 바뀐다)
+const INTRO_MUSIC_SCREENS=['screen-title','screen-major','screen-sub'];
+function rawShow(id){
+  clearGameTimers();   // 이전 화면에서 예약된 팝업 띄우기 등을 취소한다
+  stopSpokenAudio();   // 나가는 화면에서 나던 단어 발음·효과음을 끊는다
+  screens.forEach(s=>document.getElementById(s).classList.toggle('active',s===id));
+  // 타이틀 그림에는 액자·별이 이미 그려져 있어 CSS 별 장식을 숨긴다
+  stage.classList.toggle('on-title',id==='screen-title');
+  playBgm(INTRO_MUSIC_SCREENS.includes(id)?'intro':'main');
+  updateNavButtonStates();
+}
+function curScreen(){return screens.find(s=>document.getElementById(s).classList.contains('active'));}
+function goTo(id){histBack.push(curScreen());histFwd=[];rawShow(id);}
+// [Game Start] : 단원 주소로 들어왔으면 바로 게임, 아니면 학년 선택으로
+function startFromTitle(){
+  if(UNIT.current){startGame();goTo('screen-game');}
+  else goTo('screen-major');
+}
+// 나가기를 확정하고 버린 게임 화면은 '앞으로' 에 남기지 않는다 (leavingGame 설명 참고)
+function goBack(){if(!histBack.length)return;if(leavingGame)histFwd=[];else histFwd.push(curScreen());rawShow(histBack.pop());}
+function goFwd(){if(!histFwd.length)return;histBack.push(curScreen());rawShow(histFwd.pop());}
+function goHome(){histBack=[];histFwd=[];rawShow('screen-title');}
+
+/* ── 상단 네비게이션(홈/뒤로/앞으로) — 전체 게임 공통 버튼이 부르는 함수 ──
+   이 게임은 화면 순서가 고정된 게 아니라 지나온 기록(histBack/histFwd)으로
+   뒤로·앞으로를 움직이므로, 기존 기록 방식을 그대로 쓴다. */
+// 화면을 옮길 때 재생 중이던 단어 음성은 끊고 배경음악을 원래대로 되돌린다
+/* ── 게임 도중 나가기 확인 ──
+   문제를 푸는 중에 홈·뒤로를 누르면 곧바로 나가지 않고 한 번 물어본다.
+   게임 화면이 아닐 때는 물어볼 것이 없으므로 그대로 이동한다. */
+let pendingLeave=null;
+function askLeaveGame(go){
+  stopSpokenAudio();   // 나가기를 누른 순간 듣고 있던 발음을 바로 끊는다
+  if(curScreen()!=='screen-game'){go();return;}
+  pendingLeave=go;
+  document.getElementById('leave-overlay').classList.add('show');
+  focusIntoPopup();
+}
+/* 나가기를 확정하고 게임 화면을 버리는 중인지. '지금 나가면 풀던 문제가 사라져요' 라고
+   안내해 놓고도 '앞으로' 를 누르면 놓아 둔 글자까지 그대로 되살아났다 */
+let leavingGame=false;
+function confirmLeave(){
+  document.getElementById('leave-overlay').classList.remove('show');
+  const go=pendingLeave;pendingLeave=null;
+  leavingGame=true;
+  if(go)go();
+  leavingGame=false;
+}
+function cancelLeave(){
+  document.getElementById('leave-overlay').classList.remove('show');
+  pendingLeave=null;
+}
+
+function navHome(){
+  if(curScreen()==='screen-title')return;   // 첫 화면에서는 갈 곳이 없음
+  askLeaveGame(()=>{stopVoice();goHome();});
+}
+// 게임 앞에는 고르는 단계가 없으므로(단원은 주소로 정해진다) 게임 중 '뒤로'는 타이틀로 간다
+function navBack(){askLeaveGame(()=>{stopVoice();if(curScreen()==='screen-game')goHome();else goBack();});}
+// 타이틀의 '앞으로' 는 Game Start 와 같다
+function navForward(){stopVoice();if(!histFwd.length&&curScreen()==='screen-title')startFromTitle();else goFwd();}
+
+// 화면이 바뀔 때마다(어떤 경로로 바뀌었든) 홈/뒤로/앞으로 버튼의 활성·비활성을 갱신한다
+function updateNavButtonStates(){
+  const isFirst=curScreen()==='screen-title';
+  const set=(id,off)=>{
+    const btn=document.getElementById(id);
+    if(!btn)return;
+    btn.disabled=off;
+    btn.style.opacity=off?'0.35':'1';
+    btn.style.pointerEvents=off?'none':'';
+  };
+  set('nav-home-btn',isFirst);
+  set('nav-back-btn',isFirst||!histBack.length);
+  set('nav-forward-btn',!histFwd.length&&!isFirst);
+}
+
+// 화면 전환이 goTo/goBack 을 거치지 않고 rawShow 로 직접 일어날 수도 있으므로
+// 각 화면 div 의 class 변화를 감시해 버튼 상태를 자동으로 맞춘다
+screens.forEach(id=>{
+  const el=document.getElementById(id);
+  if(el)new MutationObserver(updateNavButtonStates).observe(el,{attributes:true,attributeFilter:['class']});
+});
+updateNavButtonStates();   // 페이지 로드 시 1회 초기화
+
+// 팝업(How to Play / 정답·오답)이 열려 있는 동안에는 상단 네비게이션을 감춘다
+function syncTopNavVisibility(){
+  document.body.classList.toggle('modal-open',!!document.querySelector('.overlay.show'));
+}
+document.querySelectorAll('.overlay').forEach(o=>{
+  new MutationObserver(syncTopNavVisibility).observe(o,{attributes:true,attributeFilter:['class']});
+});
+
+/* How to Play 팝업
+   타이틀에서 열면  : 아래에 [닫기] [Game Start] 두 버튼
+   게임 중 ❓ 로 열면 : 아래 버튼 없이 오른쪽 위 ✕ 하나 */
+const howtoOverlay=document.getElementById('howto-overlay');
+const howtoBtn=document.getElementById('btn-howto-close');
+function openHowto(){
+  const atTitle=curScreen()==='screen-title';
+  document.getElementById('howto-buttons').style.display=atTitle?'flex':'none';
+  // ✕ 는 어느 경우에나 보여 준다 (모든 팝업에 닫기 버튼이 하나씩 있도록)
+  document.getElementById('btn-howto-x').style.display='flex';
+  howtoOverlay.classList.add('show');
+  focusIntoPopup();
+}
+function openHowToPlay(){openHowto();}   // 공통 상단바가 부르는 이름
+function closeHowto(){stopSpokenAudio();howtoOverlay.classList.remove('show');}
+// 타이틀의 [Game Start] : 설명을 닫고 바로 게임(단원이 없으면 학년 선택)으로 넘어간다
+function closeHowtoAndStart(){closeHowto();startFromTitle();}
+howtoBtn.onclick=closeHowtoAndStart;
+document.getElementById('btn-howto-dismiss').onclick=closeHowto;
+document.getElementById('btn-howto-x').onclick=closeHowto;
+
+
+
+/* ══════════ 전체화면 ══════════ */
+// iOS Safari는 일반 요소의 전체화면 API 자체를 지원하지 않아 아래 폴백으로도 해결되지 않음.
+// 구형 안드로이드 브라우저/인앱 웹뷰 대응용 webkit 접두사 폴백만 추가.
+function getFullscreenElement(){
+  return document.fullscreenElement || document.webkitFullscreenElement;
+}
+function toggleFullscreen(){
+  const el=document.documentElement;
+  if(!getFullscreenElement()){
+    const request=el.requestFullscreen||el.webkitRequestFullscreen;
+    if(request){
+      const result=request.call(el);
+      if(result&&result.catch)result.catch(()=>{});
+    }
+  } else {
+    const exit=document.exitFullscreen||document.webkitExitFullscreen;
+    if(exit)exit.call(document);
+  }
+}
+function updateFullscreenIcon(){
+  const icon=document.getElementById('fullscreen-toggle-icon');
+  if(icon)icon.className=getFullscreenElement()?'fa-solid fa-compress':'fa-solid fa-expand';
+  // 전체화면 진입·해제 후 무대 배율 다시 맞추기 (늦게 잡히는 기기가 있어 한 번 더)
+  fitStage();
+  setTimeout(fitStage,300);
+}
+document.addEventListener('fullscreenchange',updateFullscreenIcon);
+document.addEventListener('webkitfullscreenchange',updateFullscreenIcon);
+
+/* ══════════ 효과음 on/off ══════════ */
+let sfxMuted=false;   // 초기 상태: 효과음 켜짐 (배경음악과 별개로 켜고 끔)
+
+function toggleSfx(){
+  sfxMuted=!sfxMuted;
+  const icon=document.getElementById('sfx-toggle-icon');
+  if(icon)icon.className=sfxMuted?'fa-solid fa-bell-slash':'fa-solid fa-bell';
+}
+
+// 효과음은 sfx.js 가 튼다 (아이패드에서 소리가 났다 안 났다 하던 문제 — sfx.js 첫머리 참고).
+// 이름은 <audio> 의 id 를 그대로 쓴다
+GameSfx.add('au-correct','au-correct');
+GameSfx.add('au-wrong','au-wrong');
+GameSfx.add('au-drag','au-drag',{volume:0.5});   // 타일 이동음은 조금 작게
+GameSfx.add('au-hint','au-hint');
+GameSfx.add('au-success','au-success');
+
+function sfx(id){
+  if(sfxMuted)return;
+  GameSfx.play(id);
+}
+
+/* ── 힌트 알림 소리 ──
+   '힌트 알림.mp3' 는 앞 0.94초가 거의 들리지 않는 암소음이라,
+   그대로 재생하면 버튼을 눌러도 한참 뒤에 소리가 나는 것처럼 느껴진다.
+   그래서 그 부분을 건너뛰고 소리가 시작되는 지점부터 재생한다.
+   ▼ 소리 앞이 잘리면 이 값을 줄이고, 아직 늦게 들리면 늘리면 된다 (초 단위) */
+const HINT_SOUND_START=0.90;
+
+function playHintSound(){
+  if(sfxMuted)return;
+  GameSfx.play('au-hint',{offset:HINT_SOUND_START});
+}
+
+/* ══════════ 배경음악 on/off ══════════ */
+// 두 곡을 쓴다 : 타이틀~주제 선택까지는 intro, 게임 화면부터는 main.
+// 어느 곡을 틀지는 rawShow 가 화면이 바뀔 때마다 playBgm 으로 정해 준다.
+const bgmTracks={
+  intro: document.getElementById('au-intro-bgm'),
+  main: document.getElementById('au-bgm')
+};
+// 처음 보이는 화면이 타이틀이므로 intro 로 시작한다
+let currentBgmKey='intro';
+let musicMuted=false;      // 초기 상태: 음악 켜짐
+let audioUnlocked=false;   // 브라우저가 소리 재생을 허용했는지 여부 (사용자 상호작용 필요)
+// 화면이 가려져 있는지 (태블릿 화면을 껐거나 다른 창으로 옮겼을 때) — 아래 setPageHidden 참고
+let pageHidden=false;
+bgmTracks.main.volume=.4;
+bgmTracks.intro.volume=.4;
+
+// 잠금 해제 전에는 음소거 상태로 재생(대부분의 브라우저가 음소거 자동재생은 허용함)
+function syncBgmAudio(audio){
+  if(!audio)return;
+  audio.muted=!audioUnlocked;
+}
+
+function tryPlayCurrentBgm(){
+  if(musicMuted)return;
+  if(pageHidden)return;         // 화면이 가려져 있으면 켜지 않는다 (돌아올 때 다시 켠다)
+  if(isVoicePlaying())return;   // 단어 음성이 나오는 중이면 끝난 뒤에 켠다
+  const audio=bgmTracks[currentBgmKey];
+  if(!audio)return;
+  syncBgmAudio(audio);
+  if(audio.paused)audio.play().catch(()=>{});
+}
+
+// 화면이 바뀔 때 playBgm('main') 처럼 호출해서 트랙 전환
+function playBgm(key){
+  if(currentBgmKey===key)return;
+  currentBgmKey=key;
+  Object.keys(bgmTracks).forEach(k=>{
+    const audio=bgmTracks[k];
+    if(k===key){
+      audio.currentTime=0;
+      // 가려져 있는 동안 화면이 바뀌어도 소리가 새어 나오지 않게 한다
+      if(!musicMuted&&!pageHidden){
+        syncBgmAudio(audio);
+        audio.play().catch(()=>{});
+      }
+    } else {
+      audio.pause();
+    }
+  });
+}
+
+function toggleMusic(){
+  musicMuted=!musicMuted;
+  const audio=bgmTracks[currentBgmKey];
+  const icon=document.getElementById('music-toggle-icon');
+  if(musicMuted){
+    audio.pause();
+    if(icon)icon.className='fa-solid fa-volume-xmark';
+  } else {
+    if(icon)icon.className='fa-solid fa-music';
+    // 단어 음성이 나오는 중이면 지금 켜지 않고, 음성이 끝난 뒤 자동으로 켜지게 둔다
+    if(!isVoicePlaying()){
+      syncBgmAudio(audio);
+      audio.play().catch(()=>{});
+    }
+  }
+}
+
+// 배경음악(3MB)은 첫 화면이 뜨는 것을 방해하지 않도록 미리 받지 않는다.
+// 사용자가 처음 화면을 누르는 순간(= 어차피 소리를 틀 수 있게 되는 시점)에 받아서 재생한다.
+// 느린 와이파이에서 첫 화면이 훨씬 빨리 뜬다.
+function initBgm(){
+  const unlockAudio=()=>{
+    audioUnlocked=true;
+    tryPlayCurrentBgm();
+    document.removeEventListener('pointerdown',unlockAudio);
+    document.removeEventListener('keydown',unlockAudio);
+    document.removeEventListener('touchstart',unlockAudio);
+  };
+  document.addEventListener('pointerdown',unlockAudio);
+  document.addEventListener('keydown',unlockAudio);
+  document.addEventListener('touchstart',unlockAudio);
+}
+window.addEventListener('load',initBgm);
+
+/* ══════════ 영단어 음성 재생 ══════════
+   음성이 나오는 동안에는 배경음악을 잠시 멈추고, 끝나면 원래 설정대로 되돌린다.
+   배경음악을 꺼둔 상태였다면 다시 켜지지 않는다(tryPlayCurrentBgm 이 musicMuted 를 보고 걸러줌).
+
+   쓰는 법:
+     playVoice('sounds/apple.mp3')                    음성 재생 (배경음악 자동 정지)
+     playVoice('sounds/apple.mp3').then(()=>{ ... })  재생이 끝난 뒤 할 일
+     stopVoice()                                      재생 중인 음성 끄기
+     preloadVoice('sounds/apple.mp3')                 미리 받아두기(끊김 방지)             */
+
+// 단어 음성은 학습 내용이므로 '효과음 끄기'와 별개로 동작한다.
+// 효과음 버튼으로 단어 음성까지 끄고 싶으면 아래를 true 로 바꾸면 된다.
+const VOICE_FOLLOWS_SFX_TOGGLE=false;
+
+let voiceAudio=null;    // 단어 음성 전용 오디오 (하나만 두고 돌려 쓴다)
+let voiceFinish=null;   // 재생 중인 음성의 뒷정리 함수 (없으면 재생 중이 아님)
+
+function isVoicePlaying(){return voiceFinish!==null;}
+
+function ensureVoiceAudio(){
+  if(!voiceAudio){voiceAudio=new Audio();voiceAudio.preload='auto';}
+  return voiceAudio;
+}
+
+function preloadVoice(src){
+  if(!src)return;
+  const a=new Audio();a.preload='auto';a.src=src;
+}
+
+function playVoice(src){
+  if(!src)return Promise.resolve();
+  if(VOICE_FOLLOWS_SFX_TOGGLE&&sfxMuted)return Promise.resolve();
+
+  // 앞서 재생 중이던 음성이 있으면 정리한다(배경음악은 이어서 멈춘 채로 둔다)
+  if(voiceFinish)voiceFinish(false);
+  if(window.speechSynthesis)speechSynthesis.cancel();   // 기기 음성으로 읽던 것도 끊는다
+
+  const audio=ensureVoiceAudio();
+  const bgm=bgmTracks[currentBgmKey];
+  if(bgm)bgm.pause();          // 음성이 나오는 동안 배경음악 정지
+  audio.src=src;
+  audio.currentTime=0;
+
+  return new Promise(resolve=>{
+    const finish=(restore)=>{
+      if(voiceFinish!==finish)return;   // 이미 정리된 재생
+      voiceFinish=null;
+      audio.onended=null;audio.onerror=null;
+      if(restore)tryPlayCurrentBgm();   // 원래 설정대로 (꺼둔 상태면 아무 일도 없음)
+      resolve();
+    };
+    voiceFinish=finish;
+    audio.onended=()=>finish(true);
+    audio.onerror=()=>finish(true);     // 파일이 없어도 배경음악은 반드시 되돌아온다
+    const p=audio.play();
+    if(p&&p.catch)p.catch(()=>finish(true));
+  });
+}
+
+function stopVoice(){
+  if(voiceAudio){voiceAudio.pause();voiceAudio.currentTime=0;}
+  if(window.speechSynthesis)speechSynthesis.cancel();
+  if(voiceFinish)voiceFinish(true);
+  else tryPlayCurrentBgm();
+}
+
+/* 화면을 옮기거나 팝업을 닫을 때, 그때까지 나던 소리를 함께 끊는다.
+   단어 발음이 다음 화면까지 이어서 들리거나, 나간 뒤에 효과음이 울리는 것을 막는다.
+   (배경음악은 stopVoice 가 원래 설정대로 되돌려 준다) */
+function stopSpokenAudio(){
+  stopVoice();
+  GameSfx.stop(['au-correct','au-wrong','au-hint','au-success']);
+}
+
+/* ══════════ 화면을 가렸을 때 소리 멈추기 ══════════
+   태블릿 화면을 끄거나 다른 창으로 옮겨도 배경음악이 뒤에서 계속 울렸다.
+   가려지면 나던 소리를 모두 멈추고, 돌아오면 원래 설정대로 되돌린다
+   (배경음악을 꺼 둔 상태였다면 돌아와도 켜지지 않는다 — tryPlayCurrentBgm 이 musicMuted 를 본다).
+   가려져 있는 동안에는 pageHidden 때문에 tryPlayCurrentBgm·playBgm 이 아무것도 켜지 않으므로,
+   그 사이에 단어 음성이 끝나거나 예약해 둔 작업이 돌아도 소리가 새어 나오지 않는다.
+   단어 발음은 중간에 끊긴 채로 두고 이어서 틀지는 않는다 — 돌아와서 발음 버튼을 다시 누르면 된다 */
+function setPageHidden(hidden){
+  if(hidden===pageHidden)return;
+  pageHidden=hidden;
+  if(hidden){
+    stopSpokenAudio();   // 이 안에서 배경음악을 되돌리려 해도 위 pageHidden 에 막힌다
+    // 배경음악 두 곡과 남아 있는 효과음까지 한 번에. 되감지 않고 멈추기만 해서
+    // 돌아왔을 때 배경음악이 멈춘 자리에서 이어진다 (효과음은 틀 때마다 0초로 되감는다)
+    document.querySelectorAll('audio').forEach(a=>{if(!a.paused)a.pause();});
+  } else {
+    tryPlayCurrentBgm();
+  }
+}
+document.addEventListener('visibilitychange',()=>setPageHidden(document.hidden));
+/* 아이폰·아이패드는 홈으로 나가거나 화면을 끌 때 visibilitychange 가 빠지는 경우가 있어
+   pagehide/pageshow 도 함께 듣는다 (뒤로 가기로 되살아날 때도 pageshow 가 온다) */
+window.addEventListener('pagehide',()=>setPageHidden(true));
+window.addEventListener('pageshow',()=>setPageHidden(document.hidden));
+
+/* ══════════ 단어 발음 파일 위치 ══════════
+   mp3 는 "<대분류 한글이름>/<단어>.mp3" 에 들어 있다.
+   WORD_DATA 의 대분류 키는 "물건\nThings" 처럼 줄바꿈으로 영문이 붙어 있으므로 앞부분만 쓴다.
+   'the U.S.' / 'P.E.' 처럼 마침표로 끝나는 단어는 파일명에 그 마침표가 없다
+   (the U.S.mp3). 그래서 끝의 마침표는 떼고 찾는다.
+   단원 단어가 테마 단어표에 없으면 녹음도 없으므로 기기 음성(speakVoice)으로 읽는다. */
+const VOICE_INDEX={};   // 단어(소문자) → [폴더, 단어표에 적힌 그대로의 단어]
+Object.entries(WORD_DATA).forEach(([majFull,subs])=>{
+  const folder=majFull.split('\n')[0];
+  Object.values(subs).forEach(list=>list.forEach(([en])=>{
+    const k=en.toLowerCase();
+    if(!VOICE_INDEX[k])VOICE_INDEX[k]=[folder,en];
+  }));
+});
+function voiceSrc(word){
+  const hit=VOICE_INDEX[(word||'').toLowerCase()];
+  if(!hit)return null;
+  const base=hit[1].endsWith('.')?hit[1].slice(0,-1):hit[1];
+  return encodeURIComponent(hit[0])+'/'+encodeURIComponent(base)+'.mp3';
+}
+
+/* 녹음 파일이 없는 단원 단어는 기기 음성(TTS)으로 읽는다.
+   playVoice 와 같은 voiceFinish 를 써서 stopVoice·화면 이동 때 함께 끊긴다 */
+function speakVoice(text){
+  if(!text||!window.speechSynthesis)return Promise.resolve();
+  if(VOICE_FOLLOWS_SFX_TOGGLE&&sfxMuted)return Promise.resolve();
+  if(voiceFinish)voiceFinish(false);
+  if(voiceAudio)voiceAudio.pause();
+  speechSynthesis.cancel();
+  const bgm=bgmTracks[currentBgmKey];
+  if(bgm)bgm.pause();          // 음성이 나오는 동안 배경음악 정지
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang='en-US';u.rate=0.9;
+  return new Promise(resolve=>{
+    const finish=(restore)=>{
+      if(voiceFinish!==finish)return;
+      voiceFinish=null;
+      u.onend=null;u.onerror=null;
+      if(restore)tryPlayCurrentBgm();
+      resolve();
+    };
+    voiceFinish=finish;
+    u.onend=()=>finish(true);
+    u.onerror=()=>finish(true);
+    speechSynthesis.speak(u);
+  });
+}
+
+// 발음 듣기 버튼 : 재생 중에는 표시를 남기고 끝나면 되돌린다
+function playWordAudio(word,btn){
+  if(!word)return;
+  if(btn)btn.classList.add('playing');
+  const src=voiceSrc(word);
+  (src?playVoice(src):speakVoice(word)).then(()=>{if(btn)btn.classList.remove('playing');});
+}
+
+/* ══════════ 타이틀 ══════════ */
+document.getElementById('btn-start').onclick=startFromTitle;
+document.getElementById('btn-howto').onclick=openHowto;
+// 타이틀에 지금 단원 이름을 보여 준다 (주소에 단원이 없으면 감춘다)
+document.querySelectorAll('[data-unit-label]').forEach(el=>{
+  el.textContent=UNIT.label();
+  el.hidden=!UNIT.current;
+});
+
+/* ══════════ 학년 렌더 (주소에 단원이 없을 때만 쓴다) ══════════ */
+const majorGrid=document.getElementById('major-grid');
+UNIT.grades().forEach(grade=>{
+  const b=document.createElement('button');
+  b.className='major-btn';
+  b.innerHTML=`${grade}학년<span class="en">Grade ${grade} · ${UNIT.unitsOf(grade).length}개 단원</span>`;
+  b.onclick=()=>{selectedGrade=grade;renderSub();goTo('screen-sub');};
+  majorGrid.appendChild(b);
+});
+
+/* ══════════ 단원 렌더 + 커스텀 툴팁 ══════════ */
+const tooltip=document.getElementById('tooltip');
+/* 단원 칸은 화면에 들어올 때마다 통째로 새로 만들어진다. 버튼마다 이벤트를 붙이면
+   들어올 때마다 쌓이므로(자가점검에서 button/pointerenter 로 잡힌 부분),
+   버튼을 담는 줄에 한 번만 붙이고 지금 가리키는 버튼을 찾아 쓴다.
+   pointerenter/leave 는 위로 전해지지 않아 pointerover/out 을 쓴다 —
+   대신 버튼 안의 글자 사이를 오갈 때도 불리므로 그 경우는 흘려보낸다 */
+function subBtnAt(el){return el&&el.closest?el.closest('.sub-btn'):null;}
+(function(){
+  const row=document.getElementById('sub-row');
+  const sameBtn=(e,b)=>e.relatedTarget&&b.contains(e.relatedTarget);
+  row.addEventListener('pointerover',e=>{
+    const b=subBtnAt(e.target);
+    if(!b||sameBtn(e,b))return;
+    const u=UNIT.units.find(x=>x.key===b.dataset.unit);
+    if(u)showTooltip(u.title,u.words.map(w=>[w.en]));   // "Lesson 3. What's This? (11단어)"
+  });
+  row.addEventListener('pointerout',e=>{
+    const b=subBtnAt(e.target);
+    if(b&&!sameBtn(e,b))tooltip.style.display='none';
+  });
+  row.addEventListener('pointermove',e=>{
+    if(subBtnAt(e.target))moveTooltip(e);
+  });
+})();
+function showTooltip(title,words){
+    // 'glue stick' 처럼 띄어쓰기가 들어간 단어도 한 덩어리로 붙어 있도록
+    // 단어 안의 공백은 줄바꿈되지 않는 공백으로 바꿔준다
+    const list=words.map(w=>w[0].replace(/ /g,' ')).join(', ');
+      tooltip.innerHTML=`<span class="tt-title">${title} (${words.length}단어)</span>${list}`;
+    tooltip.style.display='block';
+}
+function moveTooltip(e){
+    const r=stage.getBoundingClientRect();
+    let x=(e.clientX-r.left)/SCALE+18, y=(e.clientY-r.top)/SCALE+18;
+    tooltip.style.left='0px';tooltip.style.top='0px';tooltip.style.display='block';
+    const tw=tooltip.offsetWidth, th=tooltip.offsetHeight;
+    if(x+tw>1260)x=1260-tw; if(y+th>700)y=700-th;
+    tooltip.style.left=x+'px';tooltip.style.top=y+'px';
+}
+function renderSub(){
+  document.getElementById('unit-title').textContent=`${selectedGrade}학년 단원을 선택하세요.`;
+  const row=document.getElementById('sub-row');row.innerHTML='';
+  UNIT.unitsOf(selectedGrade).forEach(u=>{
+    const t=UNIT.splitTitle(u);
+    const b=document.createElement('button');
+    b.className='sub-btn';b.dataset.unit=u.key;
+    // Lesson 번호가 윗줄, 단원 이름은 아랫줄 작게
+    b.innerHTML=`<span>${t.lesson}</span><span class="sb-en">${t.name}</span>`;
+    // 설명풍선은 위의 위임이 맡는다 (버튼마다 붙이지 않는다)
+    b.onclick=()=>UNIT.go(u.key);
+    row.appendChild(b);});
+}
+
+/* ══════════ 게임 진행 ══════════ */
+function startGame(){
+  // 지금 단원의 [영어, 뜻] (unit-data.js)
+  const words=UNIT.words.map(en=>[en,UNIT.meaning(en)]);
+  const shuffled=()=>{const p=[...words];
+    for(let i=p.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[p[i],p[j]]=[p[j],p[i]];}
+    return p;};
+  // 단원 단어가 문제 수보다 적으면(4-2 단원 9개) 한 번 더 섞어서 뒤에 이어 붙인다
+  let pool=shuffled();
+  while(words.length&&pool.length<MAX_QUESTIONS)pool=pool.concat(shuffled());
+  gameWords=pool.slice(0,MAX_QUESTIONS);
+  round=0;score=0;streak=0;results=[];wrongList=[];
+  document.getElementById('result-chips').innerHTML='';
+  document.getElementById('cp-lock').innerHTML='<img src="characters/ui/lock_small.png" alt="">';
+  renderCodeSlots();
+  updateHUD();loadQuestion();
+}
+function letterCount(w){return (w.match(/[A-Za-z]/g)||[]).length;}
+function tierScore(w){const n=letterCount(w);return n<=4?5:(n<=6?7:10);}
+function updateHUD(){
+  // 번호는 .num2 로 감싸 9 -> 10 에서 배지가 넓어지지 않게 한다 (위 .badge .num2 설명)
+  document.getElementById('q-badge').innerHTML=
+    `<img class="kit-ico" src="characters/ui/dial.png" alt=""> 단서 <span class="num2">${Math.min(round+1,gameWords.length)}</span> / ${gameWords.length}`;
+  document.getElementById('score-val').textContent=score;   // 앞의 훈장 그림은 그대로 둔다
+  updateCodeSlots();
+}
+
+/* ── Code Progress : 문제 수만큼 칸을 만들고, 푼 자리는 * 로 채운다 ── */
+function renderCodeSlots(){
+  const box=document.getElementById('cp-slots');
+  box.innerHTML='';
+  for(let i=0;i<gameWords.length;i++){
+    const c=document.createElement('span');
+    // p0~p5 : 키트 진행바의 파스텔 순서대로 칸 색을 돌려 쓴다
+    c.className='cp-cell p'+(i%6);c.textContent='_';
+    box.appendChild(c);
+  }
+}
+/* 채울 칸 수는 평소에는 round(지금까지 넘어간 문제 수)를 따른다.
+   답이 정해진 순간에는 제출 처리에서 round+1 을 넘겨, 결과 팝업이 뜨기 '전에'
+   이번 문제 자리까지 미리 채운다 (마지막 문제를 풀면 바로 열 칸이 다 찬다).
+   아이스크림 게임의 updateGameProgress(solvedOverride) 와 같은 방식이다 */
+function updateCodeSlots(solved){
+  const n=(solved===undefined)?round:solved;
+  document.querySelectorAll('#cp-slots .cp-cell').forEach((el,i)=>{
+    const done=i<n;
+    el.classList.toggle('on',done);
+    el.textContent=done?'*':'_';
+  });
+}
+/* 정답 글자를 다시 섞어 글자판에 깔고 빈칸을 비운다 (고정문자는 미리 채운 채로).
+   문제를 새로 낼 때와 [초기화] 를 눌렀을 때가 하는 일이 같아 함께 쓴다 */
+function dealLetters(){
+  keyHeld=null;focusWish=null;   // 키보드로 집고 있던 글자는 놓아 준다
+  slots=answer.split('').map(ch=>/[A-Za-z]/.test(ch)?null:ch); // 고정문자(공백·기호)는 미리 채움
+  const letters=answer.split('').filter(ch=>/[A-Za-z]/.test(ch));
+  let sh; do{ sh=[...letters];
+    for(let i=sh.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[sh[i],sh[j]]=[sh[j],sh[i]];}
+  }while(sh.length>1&&sh.join('')===letters.join(''));
+  poolTiles=sh;
+}
+/* [초기화] : 놓아 둔 글자만 글자판으로 되돌리고, 힌트를 쓴 기록(hintUsed)은 그대로 둔다.
+   예전에는 loadQuestion() 을 다시 불러 hintUsed 까지 0 이 됐고, 그래서 힌트를 본 뒤
+   초기화만 누르면 감점 없이 힌트를 몇 번이든 다시 볼 수 있었다 */
+function resetBoard(){
+  dealLetters();
+  // 감점이 그대로 남아 있다는 것을 다시 알려 준다
+  document.getElementById('hint-toast').textContent=
+    hintUsed?`글자만 다시 놓아요. Hint ${hintUsed}번(-${hintUsed}점)은 그대로예요.`:'';
+  renderBoard();
+}
+function loadQuestion(){
+  submitted=false;hintUsed=0;
+  const [en]=gameWords[round];
+  answer=en;
+  dealLetters();
+  const m=document.getElementById('meaning-line');m.classList.remove('show');m.textContent='';
+  document.getElementById('hint-toast').textContent='';
+  document.getElementById('hint-left').textContent='5';   // 앞의 돋보기 그림은 그대로 둔다
+  document.getElementById('btn-hint').disabled=false;
+  updateHUD();renderBoard();
+}
+function renderBoard(){
+  const sl=document.getElementById('slots'), pl=document.getElementById('pool');
+  sl.innerHTML='';pl.innerHTML='';
+  const big=answer.length>10; // 긴 단어는 블록 축소
+  // 위 CSS 와 같은 값 (20% 키운 뒤). 여기 값이 실제로 칸에 적용된다
+  const size=big?{w:70,h:79,f:38}:{w:86,h:96,f:50};
+  answer.split('').forEach((ch,i)=>{
+    const d=document.createElement('div');
+    d.style.width=size.w+'px';d.style.height=size.h+'px';
+    if(!/[A-Za-z]/.test(ch)){
+      d.className='slot fixed-char';
+      d.textContent=ch===' '?'':ch;
+      /* 공백은 낱말 사이만 띄우고, 마침표·하이픈은 글자에 붙도록 폭을 좁힌다.
+         눈에 보이는 틈은 '이 칸의 폭 + 양옆 gap(17+17)' 이라서, 틈을 반쯤 더 벌리려면
+         칸 폭만 0.26 → 0.62 로 키워야 한다 (긴 단어 기준 52px → 77px).
+         'police officer' 한 줄 폭은 1174px 로 .slots 의 max-width(1212px) 안에 남는다 */
+      d.style.width=Math.round(size.w*(ch===' '?0.62:0.30))+'px';
+      d.style.fontSize=size.f+'px';   // 글자 타일과 같은 크기라야 기준선이 맞는다
+    }
+    else{
+      d.className='slot';d.dataset.idx=i;
+      if(slots[i]){const t=makeTile(slots[i],size);t.classList.add('in-slot');t.dataset.from='slot';t.dataset.idx=i;
+        if(keyHeld&&keyHeld.from==='slot'&&keyHeld.idx===i)t.classList.add('key-held');
+        d.appendChild(t);}
+      // 빈칸은 그 자체가 '놓을 자리' 라서 키보드로 고를 수 있어야 한다
+      // (글자가 든 칸은 안의 타일이 대신 초점을 받는다)
+      else if(!submitted)d.tabIndex=0;   // 이벤트는 판 전체에 한 번만 걸려 있다(아래 위임)
+    }
+    sl.appendChild(d);});
+  poolTiles.forEach((ch,i)=>{
+    if(ch===''){const h=document.createElement('div');h.className='pool-hole';
+      h.style.width=size.w+'px';h.style.height=size.h+'px';h.dataset.pool=i;pl.appendChild(h);return;}
+    const t=makeTile(ch,size);t.dataset.from='pool';t.dataset.idx=i;
+    if(keyHeld&&keyHeld.from==='pool'&&keyHeld.idx===i)t.classList.add('key-held');
+    pl.appendChild(t);});
+  document.getElementById('btn-submit').disabled=!isFull()||submitted;
+  restoreBoardFocus();   // 다시 그리면 초점이 사라지므로, 키보드로 옮기던 자리를 되찾아 준다
+}
+function makeTile(ch,size){
+  const t=document.createElement('div');
+  // 색은 '몇 번째 문제인가' 로만 정한다. 그래서 한 문제 안의 글자는 모두 같은 색이고,
+  // 그 색이 상단 Code Progress 의 그 문제 칸(.cp-cell p0~p5) 색과 짝을 이룬다.
+  // (예전에는 글자의 charCode 로 색을 정해 한 단어 안에서 색이 뒤섞였다)
+  t.className='tile t'+(round%6);t.textContent=ch;
+  if(!submitted)t.tabIndex=0;   // 이벤트는 판 전체에 한 번만 걸려 있다(아래 위임)
+  t.style.width=size.w+'px';t.style.height=size.h+'px';t.style.fontSize=size.f+'px';
+  return t;
+}
+function isFull(){return answer.split('').every((ch,i)=>!/[A-Za-z]/.test(ch)||slots[i]);}
+
+/* ══════════ 키보드만으로 글자 옮기기 ══════════
+   마우스가 없어도 풀 수 있어야 해서, 끌어다 놓기와 같은 일을 키보드로도 할 수 있게 한다.
+     · 글자 위에서 Enter/Space  → 그 글자를 집는다 (집은 글자는 테두리로 표시)
+     · 빈칸 위에서 Enter/Space  → 집고 있던 글자를 그 자리에 놓는다
+     · 글자가 든 칸에서 Enter   → 집고 있으면 자리를 바꾸고, 아니면 그 글자를 집는다
+     · 집은 상태에서 Backspace  → 글자판으로 되돌린다
+   화살표로 칸 사이를 옮겨 다니는 것은 위의 공통 이동이 맡는다. */
+let keyHeld=null;          // {from:'pool'|'slot', idx} — 지금 집고 있는 글자
+let focusWish=null;        // 다시 그린 뒤 초점을 되돌려 줄 자리
+
+// 다시 그리면 칸이 통째로 새로 만들어져 초점이 사라진다. 원하던 자리를 찾아 되돌린다
+function restoreBoardFocus(){
+  if(!focusWish)return;
+  const w=focusWish;focusWish=null;
+  let el=null;
+  if(w.kind==='slot'){
+    const d=document.querySelector('#slots .slot[data-idx="'+w.idx+'"]');
+    el=d?(d.querySelector('.tile')||d):null;   // 글자가 들어왔으면 그 글자에 초점
+  } else {
+    el=document.querySelector('#pool .tile[data-idx="'+w.idx+'"]');
+  }
+  if(el&&el.focus)el.focus();
+}
+
+function keyPick(from,idx){
+  keyHeld={from,idx};
+  focusWish={kind:from==='slot'?'slot':'pool',idx};
+  renderBoard();
+}
+function keyPlace(si){
+  if(!keyHeld)return;
+  drag=keyHeld;            // dropOnSlot 은 drag 를 보고 글자를 옮긴다
+  dropOnSlot(si);
+  drag=null;keyHeld=null;
+  focusWish={kind:'slot',idx:si};
+  sfx('au-drag');
+  renderBoard();
+}
+function keyReturnToPool(){
+  if(!keyHeld||keyHeld.from!=='slot')return;
+  returnToPool(keyHeld.idx);
+  const back=keyHeld.idx;keyHeld=null;
+  focusWish={kind:'slot',idx:back};
+  sfx('au-drag');
+  renderBoard();
+}
+function keyCancel(){
+  if(!keyHeld)return false;
+  const w=keyHeld;keyHeld=null;
+  focusWish={kind:w.from==='slot'?'slot':'pool',idx:w.idx};
+  renderBoard();
+  return true;
+}
+
+function tileKeydown(e,t){
+  if(submitted)return;
+  const from=t.dataset.from, idx=+t.dataset.idx;
+  if(e.key==='Enter'||e.key===' '){
+    e.preventDefault();
+    // 집고 있는 상태에서 칸에 든 글자를 누르면 두 글자의 자리를 바꾼다
+    if(keyHeld&&from==='slot')keyPlace(idx);
+    else keyPick(from,idx);
+    return;
+  }
+  if((e.key==='Backspace'||e.key==='Delete')&&from==='slot'){
+    e.preventDefault();
+    keyHeld={from:'slot',idx};
+    keyReturnToPool();
+  }
+}
+function slotKeydown(e,d){
+  if(submitted)return;
+  if(e.key!=='Enter'&&e.key!==' ')return;
+  e.preventDefault();
+  if(keyHeld)keyPlace(+d.dataset.idx);
+}
+
+/* 칸과 글자에 하나하나 이벤트를 붙이면, 문제를 풀 때마다 판을 다시 그리므로
+   같은 이벤트가 끝없이 쌓인다(자가점검에서 keydown 2,203건으로 잡힌 부분).
+   그래서 판 두 곳에만 한 번 붙여 두고, 눌린 대상을 찾아 넘겨준다 */
+['slots','pool'].forEach(id=>{
+  const box=document.getElementById(id);
+  box.addEventListener('keydown',e=>{
+    const t=e.target.closest('.tile');
+    if(t){tileKeydown(e,t);return;}
+    const d=e.target.closest('.slot:not(.fixed-char)');
+    if(d)slotKeydown(e,d);
+  });
+  box.addEventListener('pointerdown',e=>{
+    const t=e.target.closest('.tile');
+    if(t)dragStart(e,t);
+  });
+});
+
+/* ══════════ 드래그 (마우스+터치 통합, 탭 없음) ══════════ */
+let drag=null;
+const ghost=document.getElementById('drag-ghost');
+// 고스트는 반드시 body 직속이어야 함(조상에 transform이 있으면 fixed 좌표가 어긋남)
+if(ghost.parentNode!==document.body) document.body.appendChild(ghost);
+function dragStart(e,t){
+  if(submitted||drag)return;   // 이미 다른 글자를 끌고 있으면 무시
+  /* 예전에는 !e.isPrimary 도 함께 걸렀다. 그런데 태블릿에서 한 손으로 화면을 짚고 있으면
+     그 손가락이 계속 primary 로 남아, 다른 손가락의 pointerdown 은 전부 isPrimary=false 가
+     된다. 그래서 화면을 짚은 채로는 글자가 아예 집히지 않았다.
+     두 개를 동시에 끄는 것은 위의 drag 검사와 아래 drag.id 로 막으므로 여기서는 보지 않는다 */
+  if(e.pointerType==='mouse'&&e.button!==0)return;   // 오른쪽·가운데 버튼으로는 끌지 않는다
+  e.preventDefault();
+  drag={from:t.dataset.from,idx:+t.dataset.idx,ch:t.textContent,el:t,id:e.pointerId};
+  t.classList.add('dragging-src');
+  // 타일 안에서 '잡은 지점'을 기억해 커서와 완전히 붙어 움직이도록 함
+  const r=t.getBoundingClientRect();
+  drag.gx=e.clientX-r.left; drag.gy=e.clientY-r.top;
+  ghost.innerHTML='';const g=t.cloneNode(true);g.classList.remove('dragging-src');
+  g.style.transform=`scale(${SCALE})`;g.style.transformOrigin='top left';
+  g.style.margin='0';
+  ghost.appendChild(g);ghost.style.display='block';
+  moveGhost(e);
+  if(t.setPointerCapture){try{t.setPointerCapture(e.pointerId);}catch(_){}}
+}
+// 끌 때마다 붙였다 떼면, 손을 창 밖에서 놓아 pointerup 을 놓친 경우가 그대로 남는다.
+// (자가점검에서 window/pointerup 61건으로 잡힌 부분) 그래서 한 번만 붙여 둔다
+window.addEventListener('pointermove',moveGhost);
+window.addEventListener('pointerup',dragEnd);
+window.addEventListener('pointercancel',dragEnd);
+function moveGhost(e){
+  // 끌고 있는 그 손가락(마우스)이 보낸 것만 따라간다 — 두 번째 손가락이 움직여도 흔들리지 않는다
+  if(!drag||e.pointerId!==drag.id)return;
+  // 고스트는 #stage 바깥(body 직속)이므로 뷰포트 좌표를 그대로 사용 → 커서와 1:1로 붙어 이동
+  ghost.style.transform=`translate3d(${e.clientX-drag.gx}px,${e.clientY-drag.gy}px,0)`;
+}
+function dragEnd(e){
+  /* 끌고 있지 않을 때 들어온 것과, 끌던 손가락이 아닌 다른 손가락이 떨어진 것은 흘려보낸다.
+     예전에는 화면을 짚고 있던 손을 떼기만 해도 그 자리에 글자가 놓여 버렸다 */
+  if(!drag||e.pointerId!==drag.id)return;
+  ghost.style.display='none';ghost.style.transform='translate3d(-9999px,-9999px,0)';
+  drag.el.classList.remove('dragging-src');
+  // 손가락이 취소된 경우(전화 수신 등)에는 놓지 않고 제자리로 되돌린다
+  if(e.type==='pointercancel'){drag=null;renderBoard();return;}
+  const under=document.elementFromPoint(e.clientX,e.clientY);
+  const slotEl=under?under.closest('.slot:not(.fixed-char)'):null;
+  const poolEl=under?under.closest('#pool'):null;
+  let moved=false;
+  if(slotEl){dropOnSlot(+slotEl.dataset.idx);moved=true;}
+  else if(poolEl&&drag.from==='slot'){returnToPool(drag.idx);moved=true;}
+  if(moved)sfx('au-drag');   // 타일을 옮겼을 때 효과음
+  drag=null;renderBoard();
+}
+function dropOnSlot(si){
+  if(drag.from==='pool'){
+    const ch=poolTiles[drag.idx];
+    if(slots[si]){ // 자리 교체: 있던 글자는 풀로
+      const back=slots[si];poolTiles[drag.idx]=back;
+    } else poolTiles[drag.idx]='';
+    slots[si]=ch;
+  } else { // slot -> slot 자리 바꾸기
+    const tmp=slots[si];slots[si]=slots[drag.idx];slots[drag.idx]=tmp||null;
+  }
+}
+function returnToPool(si){
+  const ch=slots[si];if(!ch)return;
+  const hole=poolTiles.indexOf('');
+  if(hole>-1)poolTiles[hole]=ch;else poolTiles.push(ch);
+  slots[si]=null;
+}
+
+/* ══════════ 힌트 5단계 ══════════ */
+function firstWrongIndex(){
+  for(let i=0;i<answer.length;i++){
+    if(!/[A-Za-z]/.test(answer[i]))continue;
+    if(slots[i]!==answer[i])return i;}
+  return -1;
+}
+document.getElementById('btn-hint').onclick=()=>{
+  if(hintUsed>=5||submitted)return;
+  /* 2번째 힌트부터는 잘못 놓인 글자를 알려 주거나 넣어 준다.
+     글자가 전부 제자리에 있으면 알려 줄 것이 없는데도 1점이 깎였으므로,
+     그때는 횟수를 쓰지 않고 제출하라고만 안내한다 (첫 힌트인 뜻 보기는 언제나 쓸모가 있다) */
+  if(hintUsed>=1&&firstWrongIndex()<0){
+    document.getElementById('hint-toast').textContent='글자가 모두 제자리에 있어요! [제출하기]를 눌러 보세요.';
+    return;
+  }
+  playHintSound();   // 힌트 알림 소리 (효과음 끄기 버튼을 따른다)
+  hintUsed++;
+  document.getElementById('hint-left').textContent=5-hintUsed;
+  if(hintUsed>=5)document.getElementById('btn-hint').disabled=true;
+  const toast=document.getElementById('hint-toast');
+  toast.textContent=`Hint 사용! (이번 문제 -${hintUsed}점)`;
+  const [en,ko]=gameWords[round];
+  if(hintUsed===1){
+    const m=document.getElementById('meaning-line');
+    // 앞에 놋쇠 전구 배지를 붙인다. 뜻은 텍스트 노드로 넣어야 따옴표가 든 뜻도 그대로 나온다
+    m.innerHTML='<img class="kit-ico" src="characters/ui/lightbulb.png" alt="">';
+    m.appendChild(document.createTextNode('뜻: '+ko));
+    m.classList.add('show');
+  } else if(hintUsed<=4){
+    renderBoard();
+    const wi=firstWrongIndex();if(wi<0)return;
+    const slotEls=document.querySelectorAll('#slots .slot');
+    const target=slotEls[wi];target.classList.add('hint-glow');
+    const tileIn=target.querySelector('.tile');
+    if(tileIn)tileIn.classList.add('wrong-mark'); // 잘못 놓인 글자 ❌
+    const need=answer[wi];
+    // 풀에서 정답 글자 강조 (없으면 다른 슬롯에서)
+    let done=false;
+    document.querySelectorAll('#pool .tile').forEach(t=>{
+      if(!done&&t.textContent===need){t.classList.add('hint-glow');done=true;}});
+    if(!done)document.querySelectorAll('#slots .tile').forEach(t=>{
+      if(!done&&t.textContent===need&&+t.dataset.idx!==wi){t.classList.add('hint-glow');done=true;}});
+  } else { // 5단계: 자동 입력
+    const wi=firstWrongIndex();if(wi<0)return;
+    if(slots[wi])returnToPool(wi);
+    const need=answer[wi];
+    let pi=poolTiles.indexOf(need);
+    if(pi<0){ // 다른 슬롯에 갇힌 경우 그 슬롯에서 가져오기
+      for(let i=0;i<slots.length;i++){if(i!==wi&&slots[i]===need&&answer[i]!==need){slots[i]=null;slots[wi]=need;renderBoard();return;}}
+    } else {poolTiles[pi]='';slots[wi]=need;}
+    renderBoard();
+    toast.textContent=`마지막 Hint! 글자 하나를 넣어줬어요. (-${hintUsed}점)`;
+  }
+};
+document.getElementById('btn-reset').onclick=()=>{if(!submitted)resetBoard();};
+
+/* ══════════ 제출 & 채점 ══════════ */
+/* 만든 답이 정답은 아니지만 실제로 있는 영단어이면 그 단어를, 아니면 빈 문자열을 준다.
+   'Spain' 의 글자로 만든 답은 대문자 S가 섞여 'painS' 가 되므로, 화면에는 raw 대신
+   여기서 돌려주는 사전형(pains)을 보여준다.
+   'the U.S.' 처럼 마침표·띄어쓰기가 든 정답은 애초에 표에 없으므로 자연히 걸러진다 */
+function matchOtherWord(guess){
+  const a=answer.toLowerCase(), g=guess.toLowerCase();
+  if(g===a)return '';
+  return (' '+(ALT_WORDS[a]||'')+' ').indexOf(' '+g+' ')>-1?g:'';
+}
+// 채점하지 않고 안내만 한 뒤, 그 문제를 처음 상태로 되돌린다
+function showAltWord(guess,ko){
+  playHintSound();
+  document.getElementById('alt-word').textContent=guess;
+  document.getElementById('alt-mean').textContent=ko;
+  document.getElementById('alt-overlay').classList.add('show');
+  focusIntoPopup();
+}
+// 닫기(✕·바깥 클릭·Esc)도 [다시 해볼래요] 와 같은 뜻이라 함께 쓴다
+function closeAltWord(){
+  stopSpokenAudio();
+  document.getElementById('alt-overlay').classList.remove('show');
+  /* 같은 문제를 다시 : 글자판만 처음 상태로 돌린다.
+     힌트 횟수까지 0 으로 돌리면, 힌트를 다 쓰고 다른 영단어를 한 번 내는 것만으로
+     감점이 사라져 [초기화] 와 똑같은 구멍이 된다 */
+  resetBoard();
+}
+document.getElementById('btn-alt-retry').onclick=closeAltWord;
+/* ── 결과 팝업을 띄우기까지 기다리는 시간 ──
+   순서: 정답·오답 결정 -> Code Progress 칸 먼저 채우기 -> (다 찬 뒤) 결과 팝업 -> 다음 문제.
+   칸 색이 바뀌는 데 0.3초가 걸리므로(.cp-cell 의 transition) 그보다 조금 더 기다린다.
+   오답은 화면이 흔들리는 0.45초도 끝난 뒤에 띄운다.
+   ▼ 칸이 채워지는 게 잘 안 보이면 늘리고, 팝업이 굼뜨게 느껴지면 줄이면 된다 (밀리초) */
+const RESULT_DELAY_OK=500;
+const RESULT_DELAY_NO=650;
+document.getElementById('btn-submit').onclick=()=>{
+  if(submitted||!isFull())return;
+  const [en,ko]=gameWords[round];
+  const guess=answer.split('').map((ch,i)=>/[A-Za-z]/.test(ch)?slots[i]:ch).join('');
+  const ok=guess===answer;
+  // 다른 영단어를 만든 경우엔 오답으로 치지 않는다 (점수·연속정답·복습목록 모두 그대로)
+  const alt=ok?'':matchOtherWord(guess);
+  if(alt){showAltWord(alt,ko);return;}
+  submitted=true;
+  const ov=document.getElementById('result-overlay');
+  const pp=document.getElementById('result-popup');
+  document.getElementById('rp-word').textContent=en;
+  document.getElementById('rp-mean').textContent=ko;
+  // 발음 듣기 버튼 (문제마다 단어가 바뀌므로 매번 다시 연결)
+  const rpAudio=document.getElementById('rp-audio-btn');
+  rpAudio.classList.remove('playing');
+  rpAudio.onclick=()=>playWordAudio(en,rpAudio);
+  if(ok){
+    sfx('au-correct');
+    streak++;
+    let pts=Math.max(0,tierScore(en)-hintUsed);
+    let bonus=streak>=2?2:0;
+    score+=pts+bonus;
+    pp.className='popup correct';
+    // 곰과 토끼가 번갈아 축하해 준다.
+    // 주소는 변수에 먼저 담아서 넣는다. 태그 문자열 안에 이름을 조립해 끼워 넣으면
+    // 점검 도구가 조립 자리를 파일 이름으로 읽어 '없는 파일' 로 알린다
+    const cheer=(round%2===0)?'bear_solved':'rabbit_key';
+    const cheerSrc='characters/ui/'+cheer+'.png';
+    const cheerImg=document.createElement('img');
+    cheerImg.src=cheerSrc;
+    cheerImg.alt='';
+    const rpIcon=document.getElementById('rp-icon');
+    rpIcon.innerHTML='';rpIcon.appendChild(cheerImg);
+    document.getElementById('rp-title').textContent='정답이에요!';
+    document.getElementById('rp-point').textContent=`+${pts}점`+(bonus?` (연속 정답 보너스 +${bonus}점)`:'')+(hintUsed?` · Hint -${hintUsed}점 적용`:'');
+  } else {
+    sfx('au-wrong');
+    streak=0;wrongList.push(gameWords[round]);
+    pp.className='popup wrong';
+    document.getElementById('rp-icon').innerHTML='<img src="characters/ui/rabbit_safe.png" alt="">';
+    document.getElementById('rp-title').textContent='아쉬워요! 정답은...';
+    // 아래 버튼이 이미 '다음 문제'로 안내하므로 따로 문구를 두지 않는다
+    document.getElementById('rp-point').textContent='';
+    document.getElementById('screen-game').classList.add('shake');
+    laterInGame(()=>document.getElementById('screen-game').classList.remove('shake'),500);
+  }
+  // 마지막 문제에서는 '다음 문제'가 없으므로 버튼 이름을 바꿔준다
+  document.getElementById('btn-next').textContent=
+    (round>=gameWords.length-1)?'결과 보기':'다음 문제';
+
+  results.push({word:en,ok});
+  const chip=document.createElement('span');
+  chip.className='chip '+(ok?'ok':'no');
+  // 맞고 틀림은 색으로만 구분한다. 단어는 텍스트로 넣어야 마침표가 든 단어도 그대로 나온다
+  chip.textContent=en;
+  document.getElementById('result-chips').appendChild(chip);
+  updateHUD();
+  /* 이번 문제 자리를 팝업보다 먼저 채운다. 예전에는 round 가 다음 문제로 넘어갈 때에야
+     칸이 채워져서, 마지막 문제를 풀어도 팝업 뒤 Code Progress 가 9칸에 멈춰 있었다.
+     (updateHUD 안의 updateCodeSlots() 는 아직 round 기준이라 여기서 한 칸 더 채운다) */
+  updateCodeSlots(round+1);
+  // 칸이 다 채워진 뒤에 결과 팝업을 띄운다. 화면을 나가면 취소된다
+  laterInGame(()=>{ov.classList.add('show');focusIntoPopup();},ok?RESULT_DELAY_OK:RESULT_DELAY_NO);
+};
+// 닫기(✕·바깥 클릭·Esc)도 [다음 문제] 와 같은 뜻이라 함께 쓴다
+function goNextRound(){
+  stopSpokenAudio();   // 발음을 듣던 중에 넘어가도 소리가 이어지지 않게 한다
+  document.getElementById('result-overlay').classList.remove('show');
+  round++;
+  if(round<gameWords.length)loadQuestion();
+  else showEnd();
+}
+document.getElementById('btn-next').onclick=goNextRound;
+
+/* ══════════ 엔딩 ══════════ */
+function showEnd(){
+  updateCodeSlots();   // 마지막 자리까지 * 로 채운 상태로 남긴다
+  histBack=[];histFwd=[];rawShow('screen-end');
+  const nOk=results.filter(r=>r.ok).length;
+  document.getElementById('end-score').textContent=score;
+  document.getElementById('end-correct').textContent=`${nOk}/${results.length}`;
+  document.getElementById('end-rate').textContent=Math.round(nOk/results.length*100)+'%';
+  // 한 문제라도 맞히면 금고가 열리고, 하나도 못 맞히면 잠긴 채로 남는다
+  const allWrong=nOk===0;
+  document.getElementById('end-sub').textContent=
+    allWrong?'SECRET CODE STILL LOCKED':'SECRET CODE UNLOCKED!';
+  // 하나라도 풀었으면 코드를 풀었다고, 하나도 못 풀었으면 그대로 격려한다
+  // (윗줄의 UNLOCKED / STILL LOCKED 와 뜻이 맞아야 한다)
+  document.getElementById('end-title-txt').textContent=
+    allWrong?'수고했어요! 다시 도전해볼까요?':'코드를 풀었어요! 다시 도전해볼까요?';
+  document.getElementById('btn-review').style.display=wrongList.length?'inline-block':'none';
+  const lock=document.getElementById('end-lock');
+  lock.innerHTML='<img src="characters/ui/lock_big.png" alt="">';lock.classList.remove('open');
+  if(allWrong)return;   // 자물쇠는 잠긴 채로 두고 축포도 터뜨리지 않는다
+  // 엔딩 화면을 1.2초 안에 떠나면 취소된다 — 다른 화면에서 자물쇠 소리·폭죽이 터지지 않게
+  laterInGame(()=>{
+    lock.innerHTML='<img src="characters/ui/lock_open_big.png" alt="">';
+    lock.classList.add('open');sfx('au-success');fireworks();
+  },1200);
+}
+function fireworks(){
+  const fx=document.getElementById('end-fx');fx.innerHTML='';
+  const colors=['#F2B8CC','#F5D58A','#9BBBA8','#B8CFF0','#CBB4E8','#F2C9B8'];
+  /* 자리를 그때그때 무작위로 뽑으면 한쪽에 몰리는 판이 나온다.
+     화면을 개수만큼의 띠로 나눠 한 띠에 하나씩 넣고, 띠 안에서만 위치를 흔든다.
+     그 다음 순서를 섞어서 색·시간이 왼쪽부터 줄 서지 않게 한다 */
+  const spread=(n,from,to)=>{
+    const a=[];for(let i=0;i<n;i++)a.push(from+(i+Math.random())*(to-from)/n);
+    for(let i=n-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
+    return a;
+  };
+  const xs=spread(80,0,100);
+  for(let i=0;i<80;i++){const c=document.createElement('div');c.className='confetti';
+    c.style.left=xs[i].toFixed(2)+'%';
+    c.style.width=(6+Math.random()*8)+'px';c.style.height=(10+Math.random()*10)+'px';
+    c.style.background=colors[i%colors.length];
+    c.style.animationDuration=(2+Math.random()*2.5)+'s';
+    c.style.animationDelay=(Math.random()*1.5)+'s';fx.appendChild(c);}
+  /* 폭죽은 이모지 대신 그림으로 (기기마다 모양이 달라지지 않는다).
+     폭죽 판이 결과 상자보다 뒤 층이라 상자에 걸치는 것이 있어도 괜찮다.
+     오히려 일부러 피하면 상자 둘레에만 둘러선 것처럼 어색해지므로,
+     화면 전체에 그냥 뿌린다. 대신 화면을 가로 3칸 x 세로 2칸으로 나눠
+     한 칸에 하나씩만 넣어 한쪽에 몰리지 않게 한다 (모두 여섯 개).
+     한 번 터질 때마다 맡은 칸 안에서 자리와 크기를 새로 잡으므로
+     늘 같은 곳에서만 터지지 않는다 */
+  const sEl=document.getElementById('screen-end');
+  const sw=sEl.offsetWidth||1280, sh=sEl.offsetHeight||720;
+  const COLS=3, ROWS=2;
+  const X1=8, X2=88, Y1=13, Y2=88;   // 폭죽 한가운데가 들어갈 범위
+  /* 이웃한 두 칸의 폭죽이 경계에 나란히 서면 한 덩어리처럼 붙어 보인다.
+     그래서 이웃과 맞닿는 안쪽 가장자리는 비워 둔다.
+     바깥쪽 끝(화면 가장자리 쪽)은 그대로 써야 상자 밖까지 나가 훤히 보이는 것도 생긴다 */
+  const INSET=0.22;
+  const rnd=(a,b)=>a+Math.random()*(b-a);
+  const band=(from,to,i,n)=>{
+    const w=(to-from)/n, m=w*INSET;
+    return rnd(from+i*w+(i===0?0:m), from+(i+1)*w-(i===n-1?0:m));
+  };
+  const place=(el,c,r)=>{
+    const cx=band(X1,X2,c,COLS), cy=band(Y1,Y2,r,ROWS);
+    const wpx=70+Math.random()*60;                    // 크기도 매번 조금씩 다르게
+    const wp=(wpx/sw)*100, hp=(wpx*220/196/sh)*100;   // 그림 비율 196x220
+    el.style.width=wpx.toFixed(0)+'px';
+    // 1.6배까지 커지므로 화면 끝을 넘지 않도록 한 번 더 가둔다
+    el.style.left=Math.min(86,Math.max(2,cx-wp/2)).toFixed(1)+'%';
+    el.style.top =Math.min(82,Math.max(2,cy-hp/2)).toFixed(1)+'%';
+  };
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){
+    const s=document.createElement('img');
+    s.className='fw';s.src='characters/ui/firework.png';s.alt='';
+    s.style.animationDelay=(Math.random()*1.4)+'s';
+    place(s,c,r);
+    // onanimationiteration 은 덮어쓰기라 여러 번 불려도 쌓이지 않는다
+    s.onanimationiteration=()=>place(s,c,r);
+    fx.appendChild(s);
+  }
+}
+// 다시 플레이할 때도 '뒤로'를 누르면 타이틀로 돌아가도록 기록을 맞춰준다
+document.getElementById('btn-replay').onclick=()=>{startGame();histBack=['screen-title'];histFwd=[];rawShow('screen-game');};
+document.getElementById('btn-end-home').onclick=goHome;
+
+/* 복습 화면 : 'all' 이면 이번 판에 나온 문제 전부, 'wrong' 이면 틀린 문제만.
+   카드를 누르면 그 단어를 따라 쳐 보는 연습 팝업이 열린다 */
+function showReview(mode){
+  const isAll=mode==='all';
+  const list=isAll?gameWords:wrongList;
+  const g=document.getElementById('review-grid');
+  g.innerHTML='';
+  g.classList.toggle('mode-all',isAll);
+  document.getElementById('review-title').textContent=
+    isAll?'전체 문제 복습':'틀린 문제 모아보기';
+  // 한 줄에 4칸. 4개 이하(=한 줄)면 가운데, 5개부터는 왼쪽부터 채워 줄 시작이 맞도록 한다
+  g.style.justifyContent=list.length<=4?'center':'flex-start';
+  list.forEach(([en,ko])=>{
+    const c=document.createElement('button');
+    c.type='button';c.className='review-card';
+    c.innerHTML=`<div class="rv-en">${en}</div>
+      <div class="rv-bottom">
+        <span class="rv-ko">${ko}</span>
+        <button type="button" class="word-audio-btn" title="발음 듣기"><i class="fa-solid fa-volume-high"></i></button>
+      </div>`;
+    c.onclick=()=>openPractice(en,ko);
+    const b=c.querySelector('.word-audio-btn');
+    // 단어에 띄어쓰기가 있어 속성 대신 여기서 연결.
+    // 발음 버튼은 카드 안에 있으므로 눌렀을 때 연습 팝업까지 열리지 않도록 막는다
+    b.onclick=(e)=>{e.stopPropagation();playWordAudio(en,b);};
+    g.appendChild(c);});
+  rawShow('screen-review');
+}
+document.getElementById('btn-review').onclick=()=>showReview('wrong');
+document.getElementById('btn-review-all').onclick=()=>showReview('all');
+document.getElementById('btn-review-back').onclick=()=>rawShow('screen-end');
+
+/* ══════════ 복습 화면의 타이핑 연습 팝업 ══════════
+   철자를 맞게 치면 칭찬을 보여주고, 확인을 한 번 더 누르면 닫힌다.
+   다른 단어를 눌러 몇 번이든 다시 연습할 수 있다. */
+let prWord='', prSolved=false;
+const PRAISE=['참 잘했어요!','완벽해요!','멋져요!','정확해요!','아주 잘했어요!'];
+
+function openPractice(en,ko){
+  prWord=en;prSolved=false;
+  document.getElementById('pr-icon').src='characters/ui/bear_writing.png';
+  document.getElementById('pr-title').textContent='단어를 따라 써 볼까요?';
+  document.getElementById('pr-word').textContent=en;
+  document.getElementById('pr-mean').textContent=ko;
+  const msg=document.getElementById('pr-msg');msg.textContent='';msg.className='p-point';
+  const input=document.getElementById('pr-input');
+  input.value='';input.style.display='block';
+  document.getElementById('btn-pr-confirm').textContent='확인';
+  document.getElementById('btn-pr-quit').style.display='';
+  // 문제마다 단어가 바뀌므로 열 때마다 발음 버튼을 다시 연결한다
+  const ab=document.getElementById('pr-audio-btn');
+  ab.classList.remove('playing');
+  ab.onclick=()=>playWordAudio(en,ab);
+  document.getElementById('practice-overlay').classList.add('show');
+  focusSpellInput('pr-input');   // 열자마자 바로 칠 수 있게 커서를 넣어 준다
+}
+
+function practiceConfirm(){
+  // 이미 맞힌 뒤라면 이 버튼은 '닫기' 역할을 한다
+  if(prSolved){closePractice();return;}
+  const input=document.getElementById('pr-input');
+  const msg=document.getElementById('pr-msg');
+  if(input.value.trim().toLowerCase()===prWord.trim().toLowerCase()){
+    prSolved=true;
+    sfx('au-correct');
+    // 곰과 토끼가 번갈아 축하해 주는 대신, 여기서는 늘 활짝 웃는 얼굴로
+    document.getElementById('pr-icon').src='characters/ui/bear_solved.png';
+    document.getElementById('pr-title').textContent='맞았어요!';
+    msg.textContent=PRAISE[Math.floor(Math.random()*PRAISE.length)];
+    msg.className='p-point ok';
+    input.style.display='none';
+    document.getElementById('btn-pr-quit').style.display='none';
+  } else {
+    sfx('au-wrong');
+    msg.textContent='철자를 다시 확인해보세요!';
+    msg.className='p-point no';
+    input.classList.remove('shake');
+    void input.offsetWidth;   // 애니메이션을 다시 태우려면 클래스를 뗀 뒤 한 프레임 쉬어야 한다
+    input.classList.add('shake');
+    input.select();input.focus();
+  }
+}
+
+function closePractice(){
+  stopSpokenAudio();   // 발음을 듣던 중이었으면 팝업과 함께 끊는다
+  document.getElementById('practice-overlay').classList.remove('show');
+  prWord='';prSolved=false;
+}
+
+document.getElementById('btn-pr-confirm').onclick=practiceConfirm;
+document.getElementById('btn-pr-quit').onclick=closePractice;
+document.getElementById('btn-leave-ok').onclick=confirmLeave;
+document.getElementById('btn-leave-cancel').onclick=cancelLeave;
+/* ══════════ 팝업 닫기 : ✕ · 바깥 배경 클릭 · Esc 공통 ══════════
+   팝업마다 '닫는다'는 것이 무슨 뜻인지 달라서 여기 한 곳에 모아 둔다.
+   null 을 돌려주면 지금은 닫을 수 없다는 뜻이다. */
+function dismissAction(id){
+  if(id==='howto-overlay')   return closeHowto;
+  if(id==='leave-overlay')   return cancelLeave;    // 닫기 = 나가지 않고 계속하기
+  if(id==='practice-overlay')return closePractice;
+  if(id==='alt-overlay')     return closeAltWord;   // 닫기 = 이 문제를 다시 풀기
+  if(id==='result-overlay')  return goNextRound;    // 닫기 = [다음 문제] 와 같은 뜻
+  return null;
+}
+function openOverlayEls(){
+  return Array.from(document.querySelectorAll('.overlay')).filter(o=>o.classList.contains('show'));
+}
+// 지금 열려 있는 팝업 중 맨 위의 것을 닫는다
+function dismissTopOverlay(){
+  const open=openOverlayEls();
+  if(!open.length)return false;
+  const act=dismissAction(open[open.length-1].id);
+  if(!act)return false;
+  act();
+  return true;
+}
+function closeModal(){dismissTopOverlay();}   // 팝업의 ✕ 버튼이 부르는 이름
+
+/* 팝업 바깥을 누르면 닫는다. 팝업 안을 누른 것은 그대로 둔다.
+   덮개는 무대(1280x720) 안에만 깔려 있어서, 예전에는 무대 밖 여백을 눌러도
+   아무 일이 없었다. 태블릿·휴대폰은 화면 비율이 제각각이라 그 여백이 넓다.
+   그래서 문서 전체에서 듣고, '팝업 안' 과 '무언가를 누른 것' 만 빼고 닫는다.
+   (click 으로 듣는 이유 : pointerdown 으로 닫으면 팝업이 사라진 자리에 있던
+    아래쪽 버튼이 곧바로 눌려 버린다) */
+document.addEventListener('click',e=>{
+  if(!openOverlayEls().length)return;
+  const t=e.target;
+  if(t.closest&&(t.closest('.popup')||t.closest('button, a, input, select, textarea, label')))return;
+  dismissTopOverlay();
+});
+
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape')return;
+  // 팝업이 떠 있으면 팝업을 닫고, 아니면 키보드로 집어 든 글자를 내려놓는다
+  if(dismissTopOverlay()||keyCancel())e.preventDefault();
+});
+
+// 마우스 오른쪽 버튼 메뉴는 뜨지 않게 한다 (아이들이 잘못 눌러 헤매는 것을 막는다)
+document.addEventListener('contextmenu',e=>e.preventDefault());
+
+/* ══════════ 철자 칸은 늘 소문자로 ══════════
+   휴대폰 자판은 첫 글자를 저절로 대문자로 바꾸는 기기가 많다
+   (autocapitalize="none" 을 무시하는 자판도 있다).
+   치는 즉시 소문자로 되돌린다. 맞았는지 따질 때는 어차피 대소문자를 가리지 않는다 */
+(function(){
+  const el=document.getElementById('pr-input');
+  if(!el)return;
+  const toLower=()=>{
+    const low=el.value.toLowerCase();
+    if(el.value===low)return;
+    const at=el.selectionStart;
+    el.value=low;
+    el.setSelectionRange(at,at);   // 커서가 맨 뒤로 튀지 않게 제자리에 둔다
+  };
+  /* 한글 자판처럼 글자를 조합해 가며 넣는 중에 value 를 고쳐 쓰면 조합이 깨져
+     글자가 빠지거나 겹쳐 들어간다 (크롬북에 자판을 붙여 칠 때 나던 오류).
+     조합이 끝난 뒤에만 손댄다 */
+  let composing=false;
+  el.addEventListener('compositionstart',()=>{composing=true;});
+  el.addEventListener('compositionend',()=>{composing=false;toLower();});
+  el.addEventListener('input',()=>{if(!composing)toLower();});
+})();
+
+/* 팝업이 뜨면 곧바로 칠 수 있도록 커서를 철자 칸에 넣어 준다.
+   한 박자 뒤에 넣는 이유는, 팝업이 화면에 그려지기 전에 focus 를 부르면
+   일부 브라우저가 무시하기 때문이다 */
+function focusSpellInput(id){
+  const el=document.getElementById(id);
+  if(!el)return;
+  /* 글자를 통째로 고르는 것(select)은 처음 커서가 들어갈 때 한 번만 한다.
+     두 번째 호출에서 또 고르면, 그 사이에 이미 치기 시작한 글자를 덮어써 버린다
+     (자판이 달린 기기에서 첫 글자가 사라지던 원인) */
+  const go=()=>{
+    if(el.offsetParent===null)return;
+    const first=document.activeElement!==el;
+    el.focus();
+    if(first)el.select();
+  };
+  go();               // 대개 이것으로 바로 들어간다
+  setTimeout(go,0);   // 팝업이 아직 그려지지 않은 브라우저를 위해 한 번 더
+}
+
+/* 팝업이 열리면 초점을 팝업 안의 '지금 눌러야 할 버튼' 으로 옮긴다.
+   그러지 않으면 방금까지 만지던 글자 칸에 초점이 남아,
+   Enter 를 눌러도 팝업의 버튼 대신 뒤에 있는 것이 눌린다 */
+function focusIntoPopup(){
+  const go=()=>{
+    const btn=primaryPopupButton();
+    if(btn&&!btn.disabled&&btn.offsetParent!==null)btn.focus();
+  };
+  go();
+  setTimeout(go,0);
+}
+
+/* ══════════ 화살표 방향키로 이동 ══════════
+   Tab 은 화면에 적힌 순서대로만 움직여서, 글자판처럼 늘어선 칸에서는 엉뚱한 곳으로 튄다.
+   화살표는 '눈에 보이는 방향'으로 옮긴다. 팝업이 떠 있으면 그 안에서만 움직인다. */
+function focusablesInScope(){
+  const open=openOverlayEls();
+  const root=open.length?open[open.length-1]:document;
+  const sel='button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  return Array.from(root.querySelectorAll(sel)).filter(el=>{
+    if(el.offsetParent===null&&getComputedStyle(el).position!=='fixed')return false;
+    const r=el.getBoundingClientRect();
+    return r.width>0&&r.height>0;
+  });
+}
+/* 위쪽 고정 버튼(홈·뒤로·소리…)은 무대와 뚝 떨어져 떠 있다.
+   좌우 화살표로 거기까지 건너뛰면 풀던 자리를 잃어버리므로,
+   좌우로는 구역을 넘지 않게 한다. 위아래로는 실제로 위에 있으니 넘어갈 수 있다 */
+function focusZone(el){return el.closest('#top-nav-bar')?'nav':'stage';}
+function moveFocusByArrow(key){
+  const list=focusablesInScope();
+  if(!list.length)return false;
+  const cur=document.activeElement;
+  if(!cur||!list.includes(cur)){list[0].focus();return true;}
+  const a=cur.getBoundingClientRect();
+  const cx=a.left+a.width/2, cy=a.top+a.height/2;
+  const horizontal=(key==='ArrowLeft'||key==='ArrowRight');
+  const zone=focusZone(cur);
+  let best=null,bestScore=Infinity;
+  for(const el of list){
+    if(el===cur)continue;
+    if(horizontal&&focusZone(el)!==zone)continue;
+    const r=el.getBoundingClientRect();
+    const dx=(r.left+r.width/2)-cx, dy=(r.top+r.height/2)-cy;
+    if(key==='ArrowRight'&&dx<=1)continue;
+    if(key==='ArrowLeft' &&dx>=-1)continue;
+    if(key==='ArrowDown' &&dy<=1)continue;
+    if(key==='ArrowUp'   &&dy>=-1)continue;
+    /* 같은 줄(좌우) · 같은 세로칸(위아래) 에 걸쳐 있는 것을 먼저 고른다.
+       그래야 아래를 눌렀을 때 비스듬한 곳으로 튀지 않고 바로 아래로 내려간다.
+       걸친 것이 하나도 없을 때만 그 밖에서 가장 가까운 것을 고른다 */
+    const overlap=horizontal
+      ? (r.bottom>a.top+2 && r.top<a.bottom-2)
+      : (r.right >a.left+2 && r.left<a.right -2);
+    // 누른 방향으로 가까울수록, 옆으로 덜 벗어날수록 좋은 후보로 본다
+    const along =horizontal?Math.abs(dx):Math.abs(dy);
+    const across=horizontal?Math.abs(dy):Math.abs(dx);
+    const score=along+across*2+(overlap?0:100000);
+    if(score<bestScore){bestScore=score;best=el;}
+  }
+  if(!best)return false;
+  best.focus();
+  return true;
+}
+document.addEventListener('keydown',e=>{
+  if(!/^Arrow(Up|Down|Left|Right)$/.test(e.key))return;
+  const el=document.activeElement;
+  if(el&&(el.tagName==='INPUT'||el.tagName==='TEXTAREA'))return;   // 글자 치는 중엔 커서 이동
+  if(moveFocusByArrow(e.key))e.preventDefault();
+});
+
+/* ══════════ Enter 로 팝업의 확인 버튼 누르기 ══════════
+   지금 열려 있는 팝업에서 '지금 눌러야 할 버튼' 하나를 찾아 준다.
+   팝업마다 누를 버튼이 하나뿐이라 Enter 가 무엇을 누를지 헷갈릴 일이 없다. */
+function primaryPopupButton(){
+  const open=id=>document.getElementById(id).classList.contains('show');
+  if(open('leave-overlay'))   return document.getElementById('btn-leave-ok');    // 게임 종료 확인
+  if(open('practice-overlay'))return document.getElementById('btn-pr-confirm');  // 확인 / 닫기
+  if(open('alt-overlay'))     return document.getElementById('btn-alt-retry');   // 다시 해볼래요
+  if(open('result-overlay'))  return document.getElementById('btn-next');        // 다음 문제 / 결과 보기
+  if(open('howto-overlay')){
+    // 타이틀에서 열었으면 Game Start, 게임 중에 ❓ 로 열었으면 오른쪽 위 ✕
+    if(document.getElementById('howto-buttons').style.display!=='none')return document.getElementById('btn-howto-close');
+    return document.getElementById('btn-howto-x');
+  }
+  return null;
+}
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Enter')return;
+  // 한글 입력기가 글자를 조합하는 중이면 그 Enter 는 조합을 끝내는 것이다
+  if(e.isComposing||e.keyCode===229)return;
+  /* 초점이 '지금 열린 팝업 안의' 버튼에 있으면 브라우저가 알아서 눌러 주므로 비켜 준다.
+     반대로 팝업 밖(예: 방금까지 만지던 글자 칸)에 초점이 남아 있으면
+     그대로 두면 뒤에 있는 것이 눌리므로, 여기서 팝업 버튼을 눌러 준다 */
+  const el=document.activeElement;
+  const open=openOverlayEls();
+  const top=open.length?open[open.length-1]:null;
+  if(el&&(el.tagName==='BUTTON'||el.tagName==='A')&&(!top||top.contains(el)))return;
+  const btn=primaryPopupButton();
+  if(!btn||btn.disabled)return;
+  e.preventDefault();
+  btn.click();
+});
+</script>
+</body>
+</html>
