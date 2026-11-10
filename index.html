@@ -879,15 +879,15 @@ body.rotate-open #top-nav-bar{visibility:hidden;}
 <!-- Hint 버튼을 눌렀을 때 나오는 알림. 62KB 라 미리 받아 둬야 누르는 즉시 소리가 난다.
      ▼ 아래 세 파일 모두 이름을 폴더에 있는 그대로 적는다. 띄어쓰기와 한글은 브라우저가
        알아서 주소로 바꿔 주고, %-표기로 적으면 점검 도구가 실제 파일과 대조하지 못한다 -->
-<audio id="au-hint" src="힌트 알림.mp3" preload="auto"></audio>
+<audio id="au-hint" src="hint_alert.mp3" preload="auto"></audio>
 <!-- 마지막 결과 화면에서 자물쇠가 열릴 때 (한 판에 한 번만 나는 소리) -->
-<audio id="au-success" src="성공.mp3" preload="auto"></audio>
+<audio id="au-success" src="success.mp3" preload="auto"></audio>
 <!-- 배경음악은 3MB 라 미리 받으면 첫 화면이 늦게 뜬다.
      preload="none" 으로 두고, 사용자가 처음 화면을 누른 뒤에 받아서 재생한다 -->
-<audio id="au-bgm" src="anagram background music.mp3" preload="none" loop></audio>
+<audio id="au-bgm" src="anagram_bgm.mp3" preload="none" loop></audio>
 <!-- 타이틀 · 주제 선택 화면에서 나오는 음악 (게임 화면부터는 위 배경음악으로 바뀐다).
      3.2MB 라 마찬가지로 미리 받지 않는다 -->
-<audio id="au-intro-bgm" src="인트로 음악.mp3" preload="none" loop></audio>
+<audio id="au-intro-bgm" src="intro_music.mp3" preload="none" loop></audio>
 
 <!-- [상단 네비게이션 - 전체 게임 공통, 위치 고정] 왼쪽: 홈/뒤로/앞으로, 오른쪽: How to Play/효과음/배경음/전체화면.
      이어진 하나의 바가 아니라 아이콘마다 따로 떠 있는 원형 버튼. title 속성으로 마우스오버 시 텍스트가 뜨도록 함 -->
@@ -1491,7 +1491,7 @@ function voiceSrc(word){
   const hit=VOICE_INDEX[(word||'').toLowerCase()];
   if(!hit)return null;
   const base=hit[1].endsWith('.')?hit[1].slice(0,-1):hit[1];
-  return encodeURIComponent(hit[0])+'/'+encodeURIComponent(base)+'.mp3';
+  return UNIT.topicDir(hit[0])+'/'+encodeURIComponent(base)+'.mp3';
 }
 
 /* 녹음 파일이 없는 단원 단어는 기기 음성(TTS)으로 읽는다.
