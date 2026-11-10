@@ -929,6 +929,7 @@ body.rotate-open #top-nav-bar{visibility:hidden;}
 </div>
 <script src="topnav.js" data-backdrop="title.jpg"></script>
 <script src="unit-data.js"></script>
+<script src="unit-media.js"></script>
 <script src="unit.js"></script>
 <script src="sfx.js"></script>
 
@@ -1488,6 +1489,7 @@ Object.entries(WORD_DATA).forEach(([majFull,subs])=>{
   }));
 });
 function voiceSrc(word){
+  const unitSrc=UNIT.audio(word);if(unitSrc)return unitSrc;   // 단원별 게임 음성을 먼저 쓴다
   const hit=VOICE_INDEX[(word||'').toLowerCase()];
   if(!hit)return null;
   const base=hit[1].endsWith('.')?hit[1].slice(0,-1):hit[1];
