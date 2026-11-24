@@ -480,6 +480,8 @@ button:focus-visible,
 .howto-cols{columns:2;column-gap:38px;margin-top:20px;}
 .howto-cols h3{break-after:avoid;margin-top:0;}
 .howto-cols ul{break-inside:avoid;margin-bottom:16px;}
+/* 제목과 목록을 한 덩어리로 묶어 단 사이에서 쪼개지지 않게 한다 */
+.howto-sec{display:inline-block;width:100%;break-inside:avoid;-webkit-column-break-inside:avoid;page-break-inside:avoid;}
 .howto-box h2{text-align:center;color:#A65A52;}
 .howto-box h3{font-family:var(--font-display);font-size:22px;color:#4A2F1B;margin:16px 0 8px;}
 .howto-box p,.howto-box li{font-family:var(--font-body);font-size:19px;line-height:1.7;color:var(--brown);}
@@ -735,24 +737,24 @@ body.rotate-open #top-nav-bar{visibility:hidden;}
       </div>
       <!-- 세 묶음을 두 단으로 나눠 배치한다. 한 단으로 세우면 세로가 넘쳐 스크롤이 생긴다 -->
       <div class="howto-cols">
-      <h3>How to Play</h3>
+      <div class="howto-sec"><h3>How to Play</h3>
       <ul>
         <li>Game Start를 누르면 이번 단원의 단어로 게임이 시작됩니다.</li>
         <li>흩어진 글자 블록을 <b>드래그</b>해서 빈칸에 놓아 단어를 완성해요.</li>
         <li>빈칸에 놓은 글자는 <b>다른 빈칸으로 드래그</b>해 자리를 바꾸거나, 아래 글자판으로 드래그해 되돌릴 수 있어요.</li>
         <li>빈칸을 모두 채운 뒤 <b>[제출하기]</b> 버튼을 눌러야 채점됩니다.</li>
-      </ul>
-      <h3>점수 규칙</h3>
+      </ul></div>
+      <div class="howto-sec"><h3>점수 규칙</h3>
       <ul>
         <li>4글자 이하 단어 <b>5점</b> / 5~6글자 <b>7점</b> / 7글자 이상 <b>10점</b></li>
         <li>2문제 이상 <b>연속 정답</b>이면 문제마다 보너스 <b>+2점</b>!</li>
         <li>다른 영단어를 만들면 감점 없이 다시 할 기회를 얻어요.</li>
-      </ul>
-      <h3>Hint (한 문제당 최대 5번)</h3>
+      </ul></div>
+      <div class="howto-sec"><h3>Hint (한 문제당 최대 5번)</h3>
       <ul>
         <li>Hint를 쓸 때마다 그 문제 점수에서 <b>1점씩 감점</b>돼요. 그래도 정답을 맞히면 <b>최소 1점</b>은 받아요.</li>
         <li>1번째: 한글 뜻 공개 → 2~4번째: 들어갈 글자와 자리 알려주기(잘못 놓인 글자엔 빨간 X 표시) → 5번째: 한 글자 자동으로 넣기</li>
-      </ul>
+      </ul></div>
       </div>
       <!-- 타이틀에서 열면 아래 두 버튼, 게임 중에 ❓ 로 열면 오른쪽 위 ✕ 만 보인다 (openHowto 참고) -->
       <div class="p-btns" id="howto-buttons">
